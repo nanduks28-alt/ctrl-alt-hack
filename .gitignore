@@ -1,0 +1,12 @@
+# Environment / secrets — never commit these
+.env
+*.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db
