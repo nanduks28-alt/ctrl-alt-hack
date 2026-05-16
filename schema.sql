@@ -58,3 +58,21 @@ create policy "Users can manage their own projects"
   on projects for all
   using  (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- ── RLS FOR INCIDENTS & POSTMORTEMS ─────────────────────────
+-- Any authenticated user can read/write incidents and postmortems.
+-- (These are team-wide, not per-user.)
+alter table incidents  enable row level security;
+alter table postmortems enable row level security;
+
+create policy "Authenticated users can manage incidents"
+  on incidents for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "Authenticated users can manage postmortems"
+  on postmortems for all
+  to authenticated
+  using (true)
+  with check (true);

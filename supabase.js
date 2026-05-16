@@ -65,15 +65,13 @@ export async function saveIncident(incidentData) {
 ───────────────────────────────────────────── */
 export async function updateIncident(id, updates) {
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('incidents')
       .update(updates)
       .eq('id', id)
-      .select()
-      .single()
 
     if (error) throw error
-    return data
+    return true
   } catch (error) {
     console.error('[Supabase] updateIncident failed:', error.message)
     if (typeof addLogEntry === 'function') {
@@ -281,6 +279,48 @@ export async function saveProject(projectData) {
   } catch (error) {
     console.error('[Supabase] saveProject failed:', error.message)
     return null
+  }
+}
+
+/* ─────────────────────────────────────────────
+   verifyGithubOwnership(repoUrl, userEmail)
+   Checks the GitHub API to confirm the repo owner's
+   public email matches the signed-in user's email.
+
+   Returns:
+   { verified: true }                   — emails match, allow save
+   { verified: false, githubEmail }     — mismatch, caller should
+                                          send OTP to githubEmail
+   { verified: false, githubEmail: null, error } — can't determine
+───────────────────────────────────────────── */
+export async function verifyGithubOwnership(repoUrl, userEmail) {
+  try {
+    // Extract owner from https://github.com/owner/repo
+    const parts = repoUrl.replace('https://github.com/', '').split('/')
+    const owner = parts[0]
+    if (!owner) return { verified: false, githubEmail: null, error: 'Invalid repo URL' }
+
+    // GitHub public API — no auth needed for public profile
+    const res  = await fetch(`https://api.github.com/users/${owner}`)
+    if (!res.ok) throw new Error(`GitHub API returned ${res.status}`)
+    const user = await res.json()
+
+    const githubEmail = user.email // null if user hasn't made it public
+
+    if (!githubEmail) {
+      // Can't verify automatically — GitHub email is private.
+      // Return the login so the caller can ask the user to confirm.
+      return { verified: false, githubEmail: null, login: user.login }
+    }
+
+    if (githubEmail.toLowerCase() === userEmail.toLowerCase()) {
+      return { verified: true, githubEmail }
+    }
+
+    return { verified: false, githubEmail }
+  } catch (error) {
+    console.error('[GitHub] verifyGithubOwnership failed:', error.message)
+    return { verified: false, githubEmail: null, error: error.message }
   }
 }
 

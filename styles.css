@@ -1173,3 +1173,494 @@ body { display: flex; height: 100vh; overflow: hidden; }
   padding: 8px 12px;
   border-radius: 6px;
 }
+
+/* ===== PROJECT OVERVIEW PANEL ===== */
+.proj-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 600;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  backdrop-filter: blur(2px);
+}
+
+.proj-panel {
+  width: 860px;
+  max-width: 100vw;
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInRight 0.25s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* Header */
+.proj-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+}
+
+.proj-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: var(--text);
+  flex: 1;
+}
+
+.proj-panel-links {
+  display: flex;
+  gap: 8px;
+}
+
+.proj-panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--blue);
+  border: 1px solid rgba(79,142,247,0.3);
+  padding: 3px 10px;
+  border-radius: 5px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.proj-panel-link:hover { background: rgba(79,142,247,0.1); }
+
+.proj-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 5px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.proj-panel-close:hover { color: var(--text); background: var(--border); }
+
+/* Stat row */
+.proj-stat-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.proj-stat {
+  padding: 14px 18px;
+  border-right: 1px solid var(--border);
+}
+
+.proj-stat:last-child { border-right: none; }
+
+.proj-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.proj-stat-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.proj-stat-val.green  { color: var(--green); }
+.proj-stat-val.blue   { color: var(--blue); }
+.proj-stat-val.yellow { color: var(--yellow); }
+.proj-stat-val.red    { color: var(--red); }
+
+/* Body */
+.proj-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.proj-col {
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.proj-col:last-child { border-right: none; }
+
+.proj-col::-webkit-scrollbar { width: 4px; }
+.proj-col::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.proj-col-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* File tree */
+.proj-file-tree { display: flex; flex-direction: column; gap: 2px; }
+
+.proj-file-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: var(--text-dim);
+  cursor: default;
+  transition: background 0.1s;
+}
+
+.proj-file-row:hover { background: var(--surface2); color: var(--text); }
+
+.proj-file-row.dir { color: var(--blue); font-weight: 600; }
+
+.proj-file-icon { flex-shrink: 0; opacity: 0.6; }
+
+/* Commits */
+.proj-commits { display: flex; flex-direction: column; gap: 8px; }
+
+.proj-commit-row {
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  animation: fadeIn 0.2s ease;
+}
+
+.proj-commit-hash { font-family: 'Courier New', monospace; font-size: 10px; color: var(--blue); margin-bottom: 3px; }
+.proj-commit-msg  { font-size: 12px; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-commit-meta { font-size: 10px; color: var(--text-muted); }
+
+/* Past incidents list */
+.proj-incidents-list { display: flex; flex-direction: column; gap: 6px; }
+
+.proj-inc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.proj-inc-id   { font-family: 'Courier New', monospace; color: var(--blue); min-width: 72px; }
+.proj-inc-date { color: var(--text-muted); flex: 1; }
+.proj-inc-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(34,197,94,0.12);
+  color: var(--green);
+}
+
+/* Repo info */
+.proj-repo-info { display: flex; flex-direction: column; gap: 6px; }
+
+.proj-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.proj-info-row:last-child { border-bottom: none; }
+.proj-info-key { color: var(--text-muted); }
+.proj-info-val { color: var(--text); font-weight: 500; font-family: 'Courier New', monospace; font-size: 11px; }
+
+/* Languages */
+.proj-languages { display: flex; flex-direction: column; gap: 6px; }
+
+.proj-lang-row { display: flex; flex-direction: column; gap: 3px; }
+.proj-lang-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+.proj-lang-bar { height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.proj-lang-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+
+/* Loading row */
+.proj-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.mini-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Service card clickable */
+.service-card { cursor: pointer; }
+.service-card:hover { border-color: rgba(79,142,247,0.4); }
+
+/* ===== PROJECT BOARD PAGE ===== */
+
+/* The board page takes the full viewport height and never scrolls */
+/* Only apply flex layout when active — don't override .page { display:none } */
+#page-project-board.active {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+#page-project-board .topbar {
+  flex-shrink: 0;
+  padding: 14px 20px 0;
+  margin-bottom: 0;
+}
+
+/* Stat strip — horizontal row of 8 chips */
+.board-stats {
+  display: flex;
+  flex-shrink: 0;
+  margin: 12px 20px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.board-stat {
+  flex: 1;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+.board-stat:last-child { border-right: none; }
+
+.board-stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.board-stat-val {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-stat-val.green  { color: var(--green); }
+.board-stat-val.blue   { color: var(--blue); }
+.board-stat-val.yellow { color: var(--yellow); }
+.board-stat-val.red    { color: var(--red); }
+
+/* Main 3-column grid — fills remaining height exactly */
+.board-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  gap: 10px;
+  padding: 0 20px 14px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Cards */
+.board-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+/* A card that grows to fill remaining column space and scrolls internally */
+.board-card-grow {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.board-card-grow::-webkit-scrollbar { width: 3px; }
+.board-card-grow::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.board-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-live-dot {
+  width: 5px; height: 5px;
+  background: var(--green);
+  border-radius: 50%;
+  margin-left: auto;
+  animation: pulse 2s infinite;
+}
+
+/* Repo info */
+.board-info-list { display: flex; flex-direction: column; }
+
+.board-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(42,42,48,0.6);
+  font-size: 11px;
+  gap: 6px;
+}
+.board-info-row:last-child { border-bottom: none; }
+.board-info-key { color: var(--text-muted); flex-shrink: 0; font-size: 10px; }
+.board-info-val {
+  color: var(--text);
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+/* Language bars */
+.board-lang-list { display: flex; flex-direction: column; gap: 7px; }
+
+.board-lang-row { display: flex; flex-direction: column; gap: 3px; }
+.board-lang-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.board-lang-bar { height: 3px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.board-lang-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+/* File tree */
+.board-file-tree { display: flex; flex-direction: column; gap: 1px; }
+
+.board-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+  color: var(--text-dim);
+  transition: background 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-file-row:hover { background: var(--surface2); color: var(--text); }
+.board-file-row.dir { color: var(--blue); font-weight: 600; }
+
+/* Commits */
+.board-commits-list { display: flex; flex-direction: column; gap: 6px; }
+
+.board-commit-row {
+  padding: 7px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.board-commit-hash { font-family: 'Courier New', monospace; font-size: 9px; color: var(--blue); margin-bottom: 2px; }
+.board-commit-msg  { font-size: 11px; color: var(--text); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-commit-meta { font-size: 9px; color: var(--text-muted); }
+
+/* Incidents */
+.board-incidents-list { display: flex; flex-direction: column; gap: 5px; }
+
+.board-inc-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 10px;
+}
+.board-inc-id   { font-family: 'Courier New', monospace; color: var(--blue); min-width: 68px; }
+.board-inc-date { color: var(--text-muted); flex: 1; }
+.board-inc-status {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+/* Loading */
+.board-loading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
