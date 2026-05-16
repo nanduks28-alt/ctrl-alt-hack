@@ -1163,5 +1163,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('tl-4').className = 'timeline-item resolved';
       }
     }
+    
   });
 });

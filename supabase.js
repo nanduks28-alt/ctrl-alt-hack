@@ -2,6 +2,7 @@
    SRE-Bot — Supabase Integration Layer
    supabase.js — All database operations. Import from app.js.
    ============================================================= */
+   
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
