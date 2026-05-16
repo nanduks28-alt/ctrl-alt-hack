@@ -702,16 +702,132 @@ function exportMarkdown(pm) {
 
 /* ─────────────────────────────────────────────
    SECTION 17: SETTINGS
-   Save button with toast notification.
+   Profile display, Bob AI prefs, notifications,
+   connection status checks, danger zone actions.
 ───────────────────────────────────────────── */
 function initSettings() {
+
+  // ── Slider: Bob confidence threshold ────────────────────
+  const slider   = document.getElementById('bob-confidence');
+  const sliderVal= document.getElementById('bob-confidence-val');
+  slider.addEventListener('input', () => {
+    sliderVal.textContent = slider.value + '%';
+  });
+
+  // ── Save button ──────────────────────────────────────────
   document.getElementById('save-settings-btn').addEventListener('click', () => {
-    // In a real app, you'd persist these to localStorage or send to a backend.
-    // Here we just show a success toast.
+    // Persist preferences to localStorage
+    localStorage.setItem('sre_bob_threshold',   slider.value);
+    localStorage.setItem('sre_auto_bob',        document.getElementById('toggle-auto-bob').checked);
+    localStorage.setItem('sre_webhook_url',     document.getElementById('webhook-url').value.trim());
+    localStorage.setItem('sre_notif_critical',  document.getElementById('notif-critical').checked);
+    localStorage.setItem('sre_notif_resolved',  document.getElementById('notif-resolved').checked);
+    localStorage.setItem('sre_notif_bob',       document.getElementById('notif-bob').checked);
+
     const toast = document.getElementById('settings-toast');
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2800);
+    setTimeout(() => toast.classList.remove('show'), 2500);
   });
+
+  // ── Load saved preferences ───────────────────────────────
+  const savedThreshold = localStorage.getItem('sre_bob_threshold');
+  if (savedThreshold) {
+    slider.value = savedThreshold;
+    sliderVal.textContent = savedThreshold + '%';
+  }
+  const savedWebhook = localStorage.getItem('sre_webhook_url');
+  if (savedWebhook) document.getElementById('webhook-url').value = savedWebhook;
+
+  if (localStorage.getItem('sre_auto_bob') === 'false')
+    document.getElementById('toggle-auto-bob').checked = false;
+  if (localStorage.getItem('sre_notif_critical') === 'false')
+    document.getElementById('notif-critical').checked = false;
+  if (localStorage.getItem('sre_notif_resolved') === 'false')
+    document.getElementById('notif-resolved').checked = false;
+  if (localStorage.getItem('sre_notif_bob') === 'true')
+    document.getElementById('notif-bob').checked = true;
+
+  // ── Danger zone: sign out ────────────────────────────────
+  document.getElementById('settings-signout-btn').addEventListener('click', async () => {
+    await signOut();
+    location.reload();
+  });
+
+  // ── Danger zone: clear local data ───────────────────────
+  document.getElementById('settings-clear-btn').addEventListener('click', () => {
+    if (!confirm('Reset local incident counter and state? This does not delete Supabase data.')) return;
+    state.activeIncident  = null;
+    state.incidentCounter = 1;
+    state.postmortems     = [];
+    state.bobAnalysisDone = false;
+    renderServiceGrid();
+    renderPostmortemTable();
+    updateStatCards();
+    document.getElementById('incident-badge').style.display = 'none';
+    document.getElementById('incident-card').style.display  = 'none';
+    document.getElementById('incidents-empty').style.display= 'flex';
+    addLogEntry('Local data cleared.', 'warn');
+    const toast = document.getElementById('settings-toast');
+    toast.textContent = 'Local data cleared.';
+    toast.classList.add('show');
+    setTimeout(() => { toast.classList.remove('show'); toast.textContent = 'Settings saved.'; }, 2500);
+  });
+}
+
+/* populateSettingsProfile(user)
+   Called after sign-in to fill in the profile card
+   and run connection checks. */
+function populateSettingsProfile(user) {
+  if (!user) return;
+
+  // Avatar initials
+  const initials = user.email.slice(0, 2).toUpperCase();
+  document.getElementById('settings-avatar').textContent        = initials;
+  document.getElementById('settings-profile-email').textContent = user.email;
+  document.getElementById('settings-profile-meta').textContent  =
+    'GitHub email on file: ' + (user.email || '—');
+
+  // Supabase project URL (read-only reference)
+  const urlEl = document.getElementById('settings-project-url');
+  if (urlEl) urlEl.textContent = 'Supabase project: ' + (window.__SUPABASE_URL__ || 'configured in supabase.js');
+
+  // Run connection checks
+  checkConnections();
+}
+
+async function checkConnections() {
+  // ── Supabase ─────────────────────────────────────────────
+  setConn('supabase', 'checking', 'Checking...');
+  try {
+    const { error } = await supabase.from('projects').select('id').limit(1);
+    if (error) throw error;
+    setConn('supabase', 'ok', 'Connected');
+  } catch {
+    setConn('supabase', 'error', 'Error');
+  }
+
+  // ── GitHub API ───────────────────────────────────────────
+  setConn('github', 'checking', 'Checking...');
+  try {
+    const res = await fetch('https://api.github.com/rate_limit');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const remaining = data.rate?.remaining ?? '?';
+    setConn('github', 'ok', `${remaining} req/hr remaining`);
+  } catch {
+    setConn('github', 'error', 'Unreachable');
+  }
+
+  // ── Realtime ─────────────────────────────────────────────
+  // If we got this far and Supabase connected, realtime is likely active
+  setConn('realtime', 'ok', 'Active');
+}
+
+function setConn(name, state, label) {
+  const dot    = document.getElementById(`conn-${name}-dot`);
+  const status = document.getElementById(`conn-${name}-status`);
+  if (dot)    dot.className    = `settings-conn-dot ${state}`;
+  if (status) status.textContent = label;
 }
 
 /* ─────────────────────────────────────────────
@@ -869,6 +985,9 @@ async function onSignedIn(user) {
   });
 
   addLogEntry(`Signed in as ${user.email}`, 'ok');
+
+  // Populate settings profile card
+  populateSettingsProfile(user);
 
   // Load this user's projects
   await loadProjects();

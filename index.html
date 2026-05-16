@@ -466,39 +466,119 @@
       <div class="topbar">
         <div class="topbar-left">
           <h1 class="page-title">Settings</h1>
-          <span class="topbar-subtitle">Integration and configuration</span>
+          <span class="topbar-subtitle">Account, preferences and integrations</span>
         </div>
       </div>
 
       <div class="settings-form-wrap">
+
+        <!-- PROFILE -->
         <div class="settings-card">
-          <div class="settings-section-title">Supabase Configuration</div>
-
-          <div class="form-group">
-            <label for="supabase-url">Supabase URL</label>
-            <input type="text" id="supabase-url" class="form-input" placeholder="https://your-project.supabase.co" />
-          </div>
-          <div class="form-group">
-            <label for="supabase-key">Supabase Anon Key</label>
-            <input type="password" id="supabase-key" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
-          </div>
-        </div>
-
-        <div class="settings-card">
-          <div class="settings-section-title">Bob AI Configuration</div>
-
-          <div class="form-group">
-            <label for="bob-endpoint">Bob API Endpoint</label>
-            <input type="text" id="bob-endpoint" class="form-input" placeholder="https://api.your-bob-instance.com/v1/analyze" />
+          <div class="settings-section-title">Profile</div>
+          <div class="settings-profile-row">
+            <div class="settings-avatar" id="settings-avatar">—</div>
+            <div class="settings-profile-info">
+              <div class="settings-profile-email" id="settings-profile-email">Not signed in</div>
+              <div class="settings-profile-meta" id="settings-profile-meta">GitHub email on file: —</div>
+            </div>
           </div>
         </div>
 
+        <!-- BOB AI -->
         <div class="settings-card">
-          <div class="settings-section-title">Alerting</div>
+          <div class="settings-section-title">Bob AI</div>
 
           <div class="form-group">
-            <label for="webhook-url">Webhook URL for Alerts</label>
+            <label for="bob-confidence">
+              Auto-escalate threshold
+              <span class="settings-label-hint">Bob only escalates when confidence is above this value</span>
+            </label>
+            <div class="settings-slider-row">
+              <input type="range" id="bob-confidence" class="settings-slider" min="50" max="99" value="75" />
+              <span class="settings-slider-val" id="bob-confidence-val">75%</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Auto-analysis on incident</label>
+            <div class="settings-toggle-row">
+              <label class="settings-toggle">
+                <input type="checkbox" id="toggle-auto-bob" checked />
+                <span class="settings-toggle-track"></span>
+              </label>
+              <span class="settings-toggle-label">Automatically run Bob when an incident is detected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- NOTIFICATIONS -->
+        <div class="settings-card">
+          <div class="settings-section-title">Notifications</div>
+
+          <div class="form-group">
+            <label for="webhook-url">Slack / Discord Webhook URL</label>
             <input type="text" id="webhook-url" class="form-input" placeholder="https://hooks.slack.com/services/..." />
+            <span class="settings-field-hint">Incidents and resolutions will be posted to this webhook.</span>
+          </div>
+
+          <div class="form-group" style="margin-top:14px">
+            <label>Alert on</label>
+            <div class="settings-check-list">
+              <label class="settings-check-item">
+                <input type="checkbox" id="notif-critical" checked />
+                <span>Critical incidents</span>
+              </label>
+              <label class="settings-check-item">
+                <input type="checkbox" id="notif-resolved" checked />
+                <span>Incident resolved</span>
+              </label>
+              <label class="settings-check-item">
+                <input type="checkbox" id="notif-bob" />
+                <span>Bob analysis complete</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONNECTION STATUS -->
+        <div class="settings-card">
+          <div class="settings-section-title">Connection</div>
+          <div class="settings-conn-row">
+            <div class="settings-conn-item">
+              <span class="settings-conn-dot" id="conn-supabase-dot"></span>
+              <span class="settings-conn-label">Supabase</span>
+              <span class="settings-conn-status" id="conn-supabase-status">Checking...</span>
+            </div>
+            <div class="settings-conn-item">
+              <span class="settings-conn-dot" id="conn-github-dot"></span>
+              <span class="settings-conn-label">GitHub API</span>
+              <span class="settings-conn-status" id="conn-github-status">Checking...</span>
+            </div>
+            <div class="settings-conn-item">
+              <span class="settings-conn-dot" id="conn-realtime-dot"></span>
+              <span class="settings-conn-label">Realtime</span>
+              <span class="settings-conn-status" id="conn-realtime-status">Checking...</span>
+            </div>
+          </div>
+          <div class="settings-project-url" id="settings-project-url"></div>
+        </div>
+
+        <!-- DANGER ZONE -->
+        <div class="settings-card settings-card-danger">
+          <div class="settings-section-title settings-section-danger">Danger Zone</div>
+          <div class="settings-danger-row">
+            <div>
+              <div class="settings-danger-label">Sign out of SRE-Bot</div>
+              <div class="settings-danger-sub">You will need to verify your email again to sign back in.</div>
+            </div>
+            <button class="btn btn-outline-red" id="settings-signout-btn">Sign Out</button>
+          </div>
+          <div class="settings-danger-row" style="margin-top:12px">
+            <div>
+              <div class="settings-danger-label">Clear all local data</div>
+              <div class="settings-danger-sub">Resets incident counter and local state. Does not affect Supabase data.</div>
+            </div>
+            <button class="btn btn-outline-red" id="settings-clear-btn">Clear Data</button>
           </div>
         </div>
 
@@ -507,11 +587,9 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
             Save Settings
           </button>
-          <p class="settings-note">⚠ Never commit credentials to version control. Use environment variables or a <code>.env</code> file.</p>
         </div>
 
-        <!-- Save confirmation toast -->
-        <div class="toast" id="settings-toast">Settings saved successfully.</div>
+        <div class="toast" id="settings-toast">Settings saved.</div>
       </div>
     </section>
 
