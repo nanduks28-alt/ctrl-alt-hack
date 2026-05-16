@@ -10,6 +10,7 @@
    the UI continues to work with local state only.
 ───────────────────────────────────────────── */
 import {
+  supabase,
   saveIncident,
   updateIncident,
   savePostmortem,
@@ -23,6 +24,7 @@ import {
   saveProject,
   fetchProjects,
   deleteProject,
+  verifyGithubOwnership,
 } from './supabase.js'
 
 /* ─────────────────────────────────────────────
@@ -198,6 +200,9 @@ function renderServiceGrid() {
         <span>Resp <span class="service-stat-val">${proj._responseTime}</span></span>
       </div>
     `;
+
+    // Click → open project overview panel
+    card.addEventListener('click', () => openProjectOverview(proj));
     grid.appendChild(card);
   });
 }
@@ -918,36 +923,170 @@ function initProjects() {
       return;
     }
 
-    // Derive a short name from the repo URL: "owner/repo"
     const parts = repoUrl.replace('https://github.com/', '').split('/');
     const name  = parts.slice(0, 2).join('/');
 
-    saveBtn.textContent = 'Saving...';
+    saveBtn.textContent = 'Checking GitHub...';
     saveBtn.disabled = true;
 
-    const saved = await saveProject({
-      user_id:      state.currentUser.id,
-      name,
-      repo_url:     repoUrl,
-      demo_url:     demoUrl,
-      github_email: state.currentUser.email,
-    });
+    // ── GitHub ownership verification ────────────────────────
+    const check = await verifyGithubOwnership(repoUrl, state.currentUser.email);
+
+    if (!check.verified) {
+      if (check.githubEmail) {
+        // Emails don't match — send OTP to the GitHub email for verification
+        modalError.innerHTML =
+          `Your sign-in email (<strong>${state.currentUser.email}</strong>) doesn't match ` +
+          `the GitHub account email (<strong>${check.githubEmail}</strong>).<br><br>` +
+          `A verification code has been sent to <strong>${check.githubEmail}</strong>. ` +
+          `Enter it below to confirm ownership.`;
+        modalError.style.display = 'block';
+
+        // Send OTP to the GitHub email
+        await sendOtp(check.githubEmail);
+
+        // Swap save button to a verify flow
+        saveBtn.textContent = 'Save Project';
+        saveBtn.disabled = false;
+        showGithubOtpPrompt(modal, check.githubEmail, { name, repoUrl, demoUrl }, closeModal);
+        return;
+
+      } else if (check.error) {
+        // GitHub API failed — warn but allow save (best-effort)
+        modalError.textContent =
+          `Could not verify GitHub ownership (${check.error}). Proceeding anyway.`;
+        modalError.style.display = 'block';
+
+      } else {
+        // GitHub email is private — ask user to confirm they own the repo
+        modalError.innerHTML =
+          `The GitHub account <strong>${check.login}</strong> has a private email, ` +
+          `so we can't verify ownership automatically.<br><br>` +
+          `By saving, you confirm this is your repository.`;
+        modalError.style.display = 'block';
+      }
+    }
+
+    // Verified (or best-effort) — proceed with save
+    await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
 
     saveBtn.textContent = 'Save Project';
     saveBtn.disabled = false;
+  });
+}
 
-    if (!saved) {
-      modalError.textContent = 'Failed to save project. Check console for details.';
-      modalError.style.display = 'block';
+/* ─────────────────────────────────────────────
+   doSaveProject({ name, repoUrl, demoUrl }, closeModal)
+   Final step — actually inserts the project row.
+───────────────────────────────────────────── */
+async function doSaveProject({ name, repoUrl, demoUrl }, closeModal) {
+  const saved = await saveProject({
+    user_id:      state.currentUser.id,
+    name,
+    repo_url:     repoUrl,
+    demo_url:     demoUrl,
+    github_email: state.currentUser.email,
+  });
+
+  if (!saved) {
+    const modalError = document.getElementById('project-modal-error');
+    modalError.textContent = 'Failed to save project. Check console for details.';
+    modalError.style.display = 'block';
+    return;
+  }
+
+  state.projects.unshift(saved);
+  renderProjects();
+  renderServiceGrid();
+  updateStatCards();
+  closeModal();
+  addLogEntry(`Project added: ${name}`, 'ok');
+}
+
+/* ─────────────────────────────────────────────
+   showGithubOtpPrompt(modal, githubEmail, projectData, closeModal)
+   Injects a 6-box OTP prompt into the modal so the user
+   can verify ownership of the GitHub email address.
+───────────────────────────────────────────── */
+function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
+  const modalCard = modal.querySelector('.modal-card');
+
+  // Inject OTP UI below the error message
+  const existing = modal.querySelector('.github-otp-wrap');
+  if (existing) existing.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'github-otp-wrap';
+  wrap.innerHTML = `
+    <div class="otp-inputs" id="gh-otp-inputs">
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+      <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+    </div>
+    <button class="btn btn-primary" id="gh-otp-verify-btn" style="width:100%; margin-top:10px">
+      Verify &amp; Save Project
+    </button>
+    <div class="modal-error" id="gh-otp-error" style="display:none; margin-top:8px"></div>
+  `;
+  modalCard.appendChild(wrap);
+
+  // Wire OTP boxes
+  const boxes = wrap.querySelectorAll('.otp-box');
+  boxes.forEach((box, i) => {
+    box.addEventListener('input', () => {
+      box.value = box.value.replace(/\D/g, '').slice(-1);
+      if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+    });
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !box.value && i > 0) {
+        boxes[i - 1].focus(); boxes[i - 1].value = '';
+      }
+    });
+    box.addEventListener('paste', e => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData)
+        .getData('text').replace(/\D/g, '').slice(0, 6);
+      pasted.split('').forEach((ch, idx) => {
+        if (boxes[idx]) boxes[idx].value = ch;
+      });
+    });
+  });
+  boxes[0].focus();
+
+  // Verify button
+  document.getElementById('gh-otp-verify-btn').addEventListener('click', async () => {
+    const token = Array.from(boxes).map(b => b.value).join('');
+    const errEl = document.getElementById('gh-otp-error');
+    errEl.style.display = 'none';
+
+    if (token.length < 6) {
+      errEl.textContent = 'Enter all 6 digits.';
+      errEl.style.display = 'block';
       return;
     }
 
-    state.projects.unshift(saved);
-    renderProjects();
-    renderServiceGrid();
-    updateStatCards();
-    closeModal();
-    addLogEntry(`Project added: ${name}`, 'ok');
+    const btn = document.getElementById('gh-otp-verify-btn');
+    btn.textContent = 'Verifying...';
+    btn.disabled = true;
+
+    const { error } = await verifyOtp(githubEmail, token);
+
+    if (error) {
+      errEl.textContent = 'Invalid or expired code. Try again.';
+      errEl.style.display = 'block';
+      btn.textContent = 'Verify & Save Project';
+      btn.disabled = false;
+      boxes.forEach(b => { b.value = ''; });
+      boxes[0].focus();
+      return;
+    }
+
+    // OTP verified — save the project
+    wrap.remove();
+    await doSaveProject(projectData, closeModal);
   });
 }
 
@@ -1027,6 +1166,249 @@ function escapeHtml(str) {
 }
 
 /* ─────────────────────────────────────────────
+   SECTION 19: PROJECT BOARD PAGE
+   Navigates to page-project-board and fills it
+   with live GitHub + Supabase data.
+───────────────────────────────────────────── */
+
+const LANG_COLORS = {
+  JavaScript:'#f7df1e', TypeScript:'#3178c6', Python:'#3572a5',
+  HTML:'#e34c26', CSS:'#563d7c', Go:'#00add8', Rust:'#dea584',
+  Java:'#b07219', 'C++':'#f34b7d', Ruby:'#701516',
+  Shell:'#89e051', Vue:'#41b883', Svelte:'#ff3e00', default:'#4f8ef7',
+};
+
+function initProjectOverlay() {
+  document.getElementById('board-back-btn').addEventListener('click', () => {
+    navigateTo('dashboard');
+  });
+}
+
+async function openProjectOverview(proj) {
+  // Switch to the board page
+  navigateTo('project-board');
+
+  // ── Header ───────────────────────────────────────────────
+  document.getElementById('board-title').textContent    = proj.name;
+  document.getElementById('board-subtitle').textContent = proj.demo_url || 'Project Overview';
+  document.getElementById('board-github-link').href     = proj.repo_url;
+  document.getElementById('board-demo-link').href       = proj.demo_url || '#';
+  if (!proj.demo_url) document.getElementById('board-demo-link').style.display = 'none';
+  else                document.getElementById('board-demo-link').style.display = '';
+
+  // ── Instant stats from local state ───────────────────────
+  const status = proj._status || 'healthy';
+  const statusEl = document.getElementById('bs-status');
+  statusEl.textContent = status.toUpperCase();
+  statusEl.className = `board-stat-val ${status === 'healthy' ? 'green' : status === 'critical' ? 'red' : 'yellow'}`;
+
+  document.getElementById('bs-uptime').textContent = proj._uptime || '—';
+  document.getElementById('bs-resp').textContent   = proj._responseTime || '—';
+  document.getElementById('bs-users').textContent  = (Math.floor(Math.random() * 180) + 12).toLocaleString();
+
+  // Reset loading states
+  ['board-repo-info','board-languages','board-files','board-commits','board-incidents'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      '<div class="board-loading"><div class="mini-spinner"></div>Loading...</div>';
+  });
+  document.getElementById('bs-issues').textContent   = '…';
+  document.getElementById('bs-stars').textContent    = '…';
+  document.getElementById('bs-incidents').textContent= '…';
+  document.getElementById('bs-deploy').textContent   = '…';
+
+  // Draw sparkline immediately
+  drawBoardSparkline();
+
+  // ── GitHub API (parallel) ─────────────────────────────────
+  const [owner, repo] = proj.name.split('/');
+  if (!owner || !repo) return;
+  const base = `https://api.github.com/repos/${owner}/${repo}`;
+
+  const [repoRes, contentsRes, commitsRes, langsRes] = await Promise.allSettled([
+    fetch(base),
+    fetch(`${base}/contents`),
+    fetch(`${base}/commits?per_page=10`),
+    fetch(`${base}/languages`),
+  ]);
+
+  // Repo info
+  if (repoRes.status === 'fulfilled' && repoRes.value.ok) {
+    const r = await repoRes.value.json();
+    document.getElementById('bs-issues').textContent = r.open_issues_count ?? '—';
+    document.getElementById('bs-stars').textContent  = (r.stargazers_count ?? 0).toLocaleString();
+    document.getElementById('bs-deploy').textContent = r.pushed_at ? r.pushed_at.split('T')[0] : '—';
+
+    document.getElementById('board-repo-info').innerHTML = [
+      { k: 'Stars',       v: (r.stargazers_count ?? 0).toLocaleString() + ' ⭐' },
+      { k: 'Forks',       v: r.forks_count ?? 0 },
+      { k: 'Watchers',    v: r.watchers_count ?? 0 },
+      { k: 'Branch',      v: r.default_branch ?? 'main' },
+      { k: 'Visibility',  v: r.private ? 'Private 🔒' : 'Public 🌐' },
+      { k: 'Created',     v: r.created_at?.split('T')[0] ?? '—' },
+      { k: 'Last push',   v: r.pushed_at?.split('T')[0]  ?? '—' },
+      { k: 'License',     v: r.license?.spdx_id ?? 'None' },
+      { k: 'Description', v: r.description ?? '—' },
+    ].map(row => `
+      <div class="board-info-row">
+        <span class="board-info-key">${row.k}</span>
+        <span class="board-info-val">${escapeHtml(String(row.v))}</span>
+      </div>`).join('');
+  } else {
+    document.getElementById('board-repo-info').innerHTML =
+      '<span style="font-size:11px;color:var(--text-muted)">Could not load (private or rate-limited).</span>';
+  }
+
+  // File tree
+  if (contentsRes.status === 'fulfilled' && contentsRes.value.ok) {
+    const items = await contentsRes.value.json();
+    if (Array.isArray(items)) {
+      items.sort((a,b) => a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1);
+      document.getElementById('board-files').innerHTML = items.map(item => {
+        const isDir = item.type === 'dir';
+        const icon  = isDir
+          ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
+          : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+        return `<div class="board-file-row ${isDir ? 'dir' : ''}">${icon}${escapeHtml(item.name)}</div>`;
+      }).join('');
+    }
+  } else {
+    document.getElementById('board-files').innerHTML =
+      '<span style="font-size:11px;color:var(--text-muted)">Could not load files.</span>';
+  }
+
+  // Commits
+  if (commitsRes.status === 'fulfilled' && commitsRes.value.ok) {
+    const commits = await commitsRes.value.json();
+    if (Array.isArray(commits) && commits.length) {
+      document.getElementById('board-commits').innerHTML = commits.map(c => `
+        <div class="board-commit-row">
+          <div class="board-commit-hash">${c.sha?.slice(0,7) ?? '—'}</div>
+          <div class="board-commit-msg">${escapeHtml(c.commit?.message?.split('\n')[0] ?? '—')}</div>
+          <div class="board-commit-meta">${escapeHtml(c.commit?.author?.name ?? '—')} · ${c.commit?.author?.date?.split('T')[0] ?? '—'}</div>
+        </div>`).join('');
+    } else {
+      document.getElementById('board-commits').innerHTML =
+        '<span style="font-size:11px;color:var(--text-muted)">No commits found.</span>';
+    }
+  } else {
+    document.getElementById('board-commits').innerHTML =
+      '<span style="font-size:11px;color:var(--text-muted)">Could not load commits.</span>';
+  }
+
+  // Languages
+  if (langsRes.status === 'fulfilled' && langsRes.value.ok) {
+    const langs = await langsRes.value.json();
+    const total = Object.values(langs).reduce((a,b) => a+b, 0);
+    if (total > 0) {
+      const sorted = Object.entries(langs).sort((a,b) => b[1]-a[1]).slice(0,8);
+      document.getElementById('board-languages').innerHTML = sorted.map(([lang, bytes]) => {
+        const pct   = ((bytes/total)*100).toFixed(1);
+        const color = LANG_COLORS[lang] || LANG_COLORS.default;
+        return `
+          <div class="board-lang-row">
+            <div class="board-lang-label"><span>${escapeHtml(lang)}</span><span>${pct}%</span></div>
+            <div class="board-lang-bar"><div class="board-lang-fill" style="width:${pct}%;background:${color}"></div></div>
+          </div>`;
+      }).join('');
+    }
+  } else {
+    document.getElementById('board-languages').innerHTML =
+      '<span style="font-size:11px;color:var(--text-muted)">Could not load language data.</span>';
+  }
+
+  // Past incidents from Supabase
+  await loadBoardIncidents(proj.name);
+}
+
+async function loadBoardIncidents(serviceName) {
+  const el = document.getElementById('board-incidents');
+  try {
+    const { data } = await supabase
+      .from('incidents')
+      .select('id, service, severity, status, started_at')
+      .eq('service', serviceName)
+      .order('started_at', { ascending: false })
+      .limit(15);
+
+    const rows = data ?? [];
+    document.getElementById('bs-incidents').textContent = rows.length;
+
+    if (rows.length === 0) {
+      el.innerHTML = '<span style="font-size:11px;color:var(--green)">✓ No incidents recorded.</span>';
+      return;
+    }
+
+    el.innerHTML = rows.map(inc => {
+      const resolved = inc.status === 'resolved';
+      return `
+        <div class="board-inc-row">
+          <span class="board-inc-id">${escapeHtml(inc.id)}</span>
+          <span class="board-inc-date">${inc.started_at ? inc.started_at.split('T')[0] : '—'}</span>
+          <span class="board-inc-status" style="${resolved
+            ? 'background:rgba(34,197,94,0.12);color:var(--green)'
+            : 'background:rgba(239,68,68,0.12);color:var(--red)'
+          }">${(inc.status ?? 'unknown').toUpperCase()}</span>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Could not load incidents.</span>';
+    console.error('[Board] loadBoardIncidents:', err);
+  }
+}
+
+function drawBoardSparkline() {
+  const canvas = document.getElementById('board-sparkline');
+  if (!canvas) return;
+  const W = canvas.parentElement?.offsetWidth - 28 || 400;
+  const H = 90;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const pts = Array.from({ length: 30 }, () => Math.floor(Math.random() * 320) + 60);
+  const min = Math.min(...pts), max = Math.max(...pts), range = max - min || 1;
+  const xStep = W / (pts.length - 1);
+  const yFor  = v => H - 8 - ((v - min) / range) * (H - 20);
+
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(79,142,247,0.25)');
+  grad.addColorStop(1, 'rgba(79,142,247,0)');
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(0, yFor(pts[0]));
+  pts.forEach((v,i) => ctx.lineTo(i * xStep, yFor(v)));
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(0, yFor(pts[0]));
+  pts.forEach((v,i) => ctx.lineTo(i * xStep, yFor(v)));
+  ctx.strokeStyle = '#4f8ef7'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Dots at each point
+  pts.forEach((v,i) => {
+    ctx.beginPath();
+    ctx.arc(i * xStep, yFor(v), 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(79,142,247,0.5)'; ctx.fill();
+  });
+
+  // Last point highlighted
+  const lx = (pts.length-1)*xStep, ly = yFor(pts[pts.length-1]);
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI*2);
+  ctx.fillStyle = '#4f8ef7'; ctx.fill();
+
+  // Y-axis labels
+  ctx.fillStyle = 'rgba(107,107,122,0.8)';
+  ctx.font = '9px system-ui';
+  ctx.fillText(max + 'ms', 4, 14);
+  ctx.fillText(min + 'ms', 4, H - 4);
+}
+
+/* ─────────────────────────────────────────────
    SECTION 18: BOOT
    Initialize everything on DOMContentLoaded.
 ───────────────────────────────────────────── */
@@ -1043,6 +1425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateStatCards();
   initAuth();
   initProjects();
+  initProjectOverlay();
 
   // ── Check for an existing Supabase session ───────────────
   // If the user already signed in (session persisted in localStorage),

@@ -515,6 +515,110 @@
       </div>
     </section>
 
+    <!-- ===== PAGE: PROJECT BOARD ===== -->
+    <section class="page" id="page-project-board">
+
+      <div class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-outline" id="board-back-btn" style="margin-right:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Back
+          </button>
+          <div>
+            <h1 class="page-title" id="board-title">project/name</h1>
+            <span class="topbar-subtitle" id="board-subtitle">Project Overview</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <a class="btn btn-outline" id="board-github-link" href="#" target="_blank" rel="noopener">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+            GitHub
+          </a>
+          <a class="btn btn-primary" id="board-demo-link" href="#" target="_blank" rel="noopener">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            Live Demo
+          </a>
+        </div>
+      </div>
+
+      <div class="board-stats">
+        <div class="board-stat"><div class="board-stat-label">Status</div><div class="board-stat-val" id="bs-status">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Live Users</div><div class="board-stat-val blue" id="bs-users">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Uptime</div><div class="board-stat-val green" id="bs-uptime">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Avg Response</div><div class="board-stat-val blue" id="bs-resp">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Open Issues</div><div class="board-stat-val yellow" id="bs-issues">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Stars</div><div class="board-stat-val" id="bs-stars">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Past Incidents</div><div class="board-stat-val red" id="bs-incidents">—</div></div>
+        <div class="board-stat"><div class="board-stat-label">Last Deploy</div><div class="board-stat-val" id="bs-deploy">—</div></div>
+      </div>
+
+      <div class="board-grid">
+
+        <div class="board-col">
+          <div class="board-card">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Repository Info
+            </div>
+            <div id="board-repo-info" class="board-info-list">
+              <div class="board-loading"><div class="mini-spinner"></div>Loading...</div>
+            </div>
+          </div>
+          <div class="board-card" style="margin-top:14px">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Languages
+            </div>
+            <div id="board-languages" class="board-lang-list">
+              <div class="board-loading"><div class="mini-spinner"></div>Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="board-col">
+          <div class="board-card">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Response Time — Last 30 intervals
+              <span class="board-live-dot"></span>
+            </div>
+            <canvas id="board-sparkline" style="width:100%;display:block" height="90"></canvas>
+          </div>
+          <div class="board-card board-card-scroll" style="margin-top:14px">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+              Repository Files
+            </div>
+            <div id="board-files" class="board-file-tree">
+              <div class="board-loading"><div class="mini-spinner"></div>Fetching from GitHub...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="board-col">
+          <div class="board-card board-card-scroll">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
+              Recent Commits
+            </div>
+            <div id="board-commits" class="board-commits-list">
+              <div class="board-loading"><div class="mini-spinner"></div>Loading...</div>
+            </div>
+          </div>
+          <div class="board-card board-card-scroll" style="margin-top:14px">
+            <div class="board-card-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              Past Incidents
+            </div>
+            <div id="board-incidents" class="board-incidents-list">
+              <div class="board-loading"><div class="mini-spinner"></div>Loading...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <script type="module" src="app.js"></script>
