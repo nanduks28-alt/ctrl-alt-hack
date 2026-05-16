@@ -148,25 +148,54 @@ function initClock() {
 
 /* ─────────────────────────────────────────────
    SECTION 6: SERVICE GRID
-   Renders the 6 service health cards on the dashboard.
+   Renders service health cards on the dashboard.
+   Uses user's registered projects when available,
+   falls back to hardcoded services when none added yet.
 ───────────────────────────────────────────── */
 function renderServiceGrid() {
   const grid = document.getElementById('service-grid');
+  const meta = document.getElementById('health-meta');
   grid.innerHTML = '';
 
-  services.forEach(svc => {
-    const card = document.createElement('div');
-    card.className = `service-card ${svc.status !== 'healthy' ? svc.status : ''}`;
-    card.id = `svc-${svc.id}`;
+  // If the user has added projects, show those instead of fake services
+  const hasProjects = state.projects && state.projects.length > 0;
 
-    const badgeLabel = svc.status.toUpperCase();
+  if (!hasProjects) {
+    // Empty state — prompt user to add a project
+    grid.innerHTML = `
+      <div style="grid-column:1/-1; display:flex; flex-direction:column; align-items:center;
+                  justify-content:center; gap:10px; padding:40px 20px; color:var(--text-muted);">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#2a2a30"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span style="font-size:13px; color:var(--text-dim); font-weight:600;">No projects added yet.</span>
+        <span style="font-size:12px;">Go to <strong style="color:var(--blue)">My Projects</strong> to register your first repo.</span>
+      </div>
+    `;
+    if (meta) meta.textContent = '0 services monitored';
+    return;
+  }
+
+  if (meta) meta.textContent = `${state.projects.length} service${state.projects.length !== 1 ? 's' : ''} monitored`;
+
+  state.projects.forEach(proj => {
+    // Each project gets a runtime status entry if not already tracked
+    if (!proj._status)      proj._status       = 'healthy';
+    if (!proj._uptime)      proj._uptime       = (99 + Math.random()).toFixed(2) + '%';
+    if (!proj._responseTime) proj._responseTime = (Math.floor(Math.random() * 300) + 50) + 'ms';
+
+    const card = document.createElement('div');
+    card.className = `service-card ${proj._status !== 'healthy' ? proj._status : ''}`;
+    card.id = `svc-${proj.id}`;
 
     card.innerHTML = `
-      <div class="service-name">${svc.id}</div>
-      <span class="status-badge ${svc.status}">${badgeLabel}</span>
+      <div class="service-name">${escapeHtml(proj.name)}</div>
+      <span class="status-badge ${proj._status}">${proj._status.toUpperCase()}</span>
       <div class="service-stats">
-        <span>Uptime <span class="service-stat-val">${svc.uptime}</span></span>
-        <span>Resp <span class="service-stat-val">${svc.responseTime}</span></span>
+        <span>Uptime <span class="service-stat-val">${proj._uptime}</span></span>
+        <span>Resp <span class="service-stat-val">${proj._responseTime}</span></span>
       </div>
     `;
     grid.appendChild(card);
@@ -193,9 +222,7 @@ function addLogEntry(message, type = 'info') {
 }
 
 function initActivityLog() {
-  // Seed with some baseline entries
   addLogEntry('System initialized. All services nominal.', 'ok');
-  addLogEntry('Health checks passing for all 6 services.', 'ok');
   addLogEntry('Bob AI engine connected. Credits: 2/40.', 'info');
 }
 
@@ -215,8 +242,16 @@ function simulateIncident() {
     return;
   }
 
-  // Pick a random service
-  const svc = services[Math.floor(Math.random() * services.length)];
+  // Must have at least one project registered to simulate
+  if (!state.projects || state.projects.length === 0) {
+    addLogEntry('Add a project first before simulating an incident.', 'warn');
+    navigateTo('projects');
+    return;
+  }
+
+  // Pick a random project as the affected service
+  const proj = state.projects[Math.floor(Math.random() * state.projects.length)];
+  const svcName = proj.name; // e.g. "owner/repo"
 
   // Build incident object
   const now = new Date();
@@ -231,7 +266,7 @@ function simulateIncident() {
 
   state.activeIncident = {
     id: incidentId,
-    service: svc.id,
+    service: svcName,
     errorType: 'Connection timeout / Pool exhausted',
     severity: 'CRITICAL',
     startTime: now.toLocaleString(),
@@ -252,27 +287,27 @@ function simulateIncident() {
     severity:   state.activeIncident.severity,
     status:     'active',
     started_at: now.toISOString(),
-    logs:       null,   // logs are populated later in fillBobContext
+    logs:       null,
     commits:    null,
   });
 
-  // 1. Mark service as critical
-  svc.status = 'critical';
+  // 1. Mark the project as critical
+  proj._status = 'critical';
   renderServiceGrid();
 
   // 2. Update stat cards
   updateStatCards();
 
   // 3. Activity log entries (staggered)
-  addLogEntry(`ALERT: ${svc.id} is down — connection pool exhausted`, 'alert');
+  addLogEntry(`ALERT: ${svcName} is down — connection pool exhausted`, 'alert');
 
   setTimeout(() => {
     state.activeIncident.tl2 = ts();
-    addLogEntry(`Auto-restart triggered for ${svc.id}`, 'warn');
+    addLogEntry(`Auto-restart triggered for ${svcName}`, 'warn');
   }, 1000);
 
   setTimeout(() => {
-    addLogEntry(`Restart failed. Service ${svc.id} still unresponsive.`, 'alert');
+    addLogEntry(`Restart failed. Service ${svcName} still unresponsive.`, 'alert');
   }, 2000);
 
   setTimeout(() => {
@@ -303,21 +338,22 @@ function simulateIncident() {
 ───────────────────────────────────────────── */
 function updateStatCards() {
   const inc = state.activeIncident;
+  const total   = state.projects.length || 0;
+  const healthy = state.projects.filter(p => !p._status || p._status === 'healthy').length;
 
   if (inc && !inc.resolved) {
     document.getElementById('stat-incidents').textContent = '1';
     document.getElementById('stat-incidents').className = 'stat-value red';
     document.getElementById('stat-incidents-sub').textContent = `${inc.id} active`;
 
-    const onlineCount = services.filter(s => s.status === 'healthy').length;
-    document.getElementById('stat-services').textContent = `${onlineCount} / 12`;
+    document.getElementById('stat-services').textContent = `${healthy} / ${total}`;
     document.getElementById('stat-services').className = 'stat-value red';
   } else {
     document.getElementById('stat-incidents').textContent = '0';
     document.getElementById('stat-incidents').className = 'stat-value green';
     document.getElementById('stat-incidents-sub').textContent = 'No active incidents';
 
-    document.getElementById('stat-services').textContent = '12 / 12';
+    document.getElementById('stat-services').textContent = total > 0 ? `${total} / ${total}` : '—';
     document.getElementById('stat-services').className = 'stat-value green';
   }
 
@@ -501,9 +537,9 @@ function initGeneratePostmortem() {
       confidence:  91,
     });
 
-    // Restore service to healthy
-    const svc = services.find(s => s.id === inc.service);
-    if (svc) svc.status = 'healthy';
+    // Restore project to healthy
+    const proj = state.projects.find(p => p.name === inc.service);
+    if (proj) proj._status = 'healthy';
 
     // Update UI
     renderServiceGrid();
@@ -908,6 +944,8 @@ function initProjects() {
 
     state.projects.unshift(saved);
     renderProjects();
+    renderServiceGrid();
+    updateStatCards();
     closeModal();
     addLogEntry(`Project added: ${name}`, 'ok');
   });
@@ -918,6 +956,8 @@ async function loadProjects() {
   const rows = await fetchProjects(state.currentUser.id);
   state.projects = rows;
   renderProjects();
+  renderServiceGrid();
+  updateStatCards();
   if (rows.length > 0) {
     addLogEntry(`Loaded ${rows.length} project(s) from Supabase.`, 'info');
   }
@@ -967,6 +1007,8 @@ function renderProjects() {
       if (ok) {
         state.projects = state.projects.filter(p => p.id !== proj.id);
         renderProjects();
+        renderServiceGrid();
+        updateStatCards();
         addLogEntry(`Project removed: ${proj.name}`, 'warn');
       }
     });
@@ -1076,8 +1118,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           resolved:            false,
           engineerTookControl: false,
         };
-        const svc = services.find(s => s.id === row.service);
-        if (svc) svc.status = 'critical';
+        const proj = state.projects.find(p => p.name === row.service);
+        if (proj) proj._status = 'critical';
         renderServiceGrid();
         updateStatCards();
         renderIncidentCard();
@@ -1088,8 +1130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (payload.eventType === 'UPDATE' && row.status === 'resolved') {
       addLogEntry(`[Realtime] Incident ${row.id} marked resolved.`, 'ok');
       if (state.activeIncident && state.activeIncident.id === row.id) {
-        const svc = services.find(s => s.id === row.service);
-        if (svc) svc.status = 'healthy';
+        const proj = state.projects.find(p => p.name === row.service);
+        if (proj) proj._status = 'healthy';
         state.activeIncident = null;
         renderServiceGrid();
         updateStatCards();
