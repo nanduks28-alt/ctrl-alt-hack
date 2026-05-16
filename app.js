@@ -1,14 +1,5 @@
-/* =============================================================
-   SRE-Bot — AI Incident Response Dashboard
-   app.js — All application logic
-   ============================================================= */
 
-/* ─────────────────────────────────────────────
-   SUPABASE IMPORTS
-   All DB operations live in supabase.js.
-   These are no-ops if Supabase isn't configured yet —
-   the UI continues to work with local state only.
-───────────────────────────────────────────── */
+
 import {
   supabase,
   saveIncident,
@@ -29,22 +20,20 @@ import {
 
 /* ─────────────────────────────────────────────
    SECTION 1: STATE
-   Central state object for the whole app.
 ───────────────────────────────────────────── */
 const state = {
-  activeIncident: null,   // null = no incident, object = current incident
+  activeIncident: null,
   bobCredits: 2,
   bobCreditsMax: 40,
   incidentCounter: 1,
-  postmortems: [],        // list of postmortem records
-  bobAnalysisDone: false, // whether Bob has returned a result
-  currentUser: null,      // signed-in Supabase user object
-  projects: [],           // user's registered projects
+  postmortems: [],
+  bobAnalysisDone: false,
+  currentUser: null,
+  projects: [],
 };
 
 /* ─────────────────────────────────────────────
    SECTION 2: SERVICE DATA
-   The 6 monitored services with their initial state.
 ───────────────────────────────────────────── */
 const services = [
   { id: 'payment-api',          status: 'healthy', uptime: '99.98%', responseTime: '134ms' },
@@ -57,7 +46,6 @@ const services = [
 
 /* ─────────────────────────────────────────────
    SECTION 3: FAKE HISTORICAL POSTMORTEMS
-   Pre-seeded data so the table isn't empty.
 ───────────────────────────────────────────── */
 const historicalPostmortems = [
   {
@@ -108,7 +96,6 @@ const historicalPostmortems = [
 
 /* ─────────────────────────────────────────────
    SECTION 4: NAVIGATION
-   Tab-based page switching via sidebar links.
 ───────────────────────────────────────────── */
 function initNavigation() {
   const navItems = document.querySelectorAll('.nav-item');
@@ -121,21 +108,16 @@ function initNavigation() {
 }
 
 function navigateTo(pageId) {
-  // Deactivate all nav items and pages
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-
-  // Activate the target
   const navItem = document.querySelector(`.nav-item[data-page="${pageId}"]`);
   const page    = document.getElementById(`page-${pageId}`);
-
   if (navItem) navItem.classList.add('active');
   if (page)    page.classList.add('active');
 }
 
 /* ─────────────────────────────────────────────
    SECTION 5: LIVE CLOCK
-   Updates the topbar clock every second.
 ───────────────────────────────────────────── */
 function initClock() {
   function tick() {
@@ -150,20 +132,15 @@ function initClock() {
 
 /* ─────────────────────────────────────────────
    SECTION 6: SERVICE GRID
-   Renders service health cards on the dashboard.
-   Uses user's registered projects when available,
-   falls back to hardcoded services when none added yet.
 ───────────────────────────────────────────── */
 function renderServiceGrid() {
   const grid = document.getElementById('service-grid');
   const meta = document.getElementById('health-meta');
   grid.innerHTML = '';
 
-  // If the user has added projects, show those instead of fake services
   const hasProjects = state.projects && state.projects.length > 0;
 
   if (!hasProjects) {
-    // Empty state — prompt user to add a project
     grid.innerHTML = `
       <div style="grid-column:1/-1; display:flex; flex-direction:column; align-items:center;
                   justify-content:center; gap:10px; padding:40px 20px; color:var(--text-muted);">
@@ -183,15 +160,13 @@ function renderServiceGrid() {
   if (meta) meta.textContent = `${state.projects.length} service${state.projects.length !== 1 ? 's' : ''} monitored`;
 
   state.projects.forEach(proj => {
-    // Each project gets a runtime status entry if not already tracked
-    if (!proj._status)      proj._status       = 'healthy';
-    if (!proj._uptime)      proj._uptime       = (99 + Math.random()).toFixed(2) + '%';
+    if (!proj._status)       proj._status       = 'healthy';
+    if (!proj._uptime)       proj._uptime       = (99 + Math.random()).toFixed(2) + '%';
     if (!proj._responseTime) proj._responseTime = (Math.floor(Math.random() * 300) + 50) + 'ms';
 
     const card = document.createElement('div');
     card.className = `service-card ${proj._status !== 'healthy' ? proj._status : ''}`;
     card.id = `svc-${proj.id}`;
-
     card.innerHTML = `
       <div class="service-name">${escapeHtml(proj.name)}</div>
       <span class="status-badge ${proj._status}">${proj._status.toUpperCase()}</span>
@@ -209,20 +184,16 @@ function renderServiceGrid() {
 
 /* ─────────────────────────────────────────────
    SECTION 7: ACTIVITY LOG
-   Appends timestamped entries to the activity feed.
 ───────────────────────────────────────────── */
 function addLogEntry(message, type = 'info') {
   const log = document.getElementById('activity-log');
   const now = new Date();
   const pad = n => String(n).padStart(2, '0');
   const ts  = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
   const entry = document.createElement('div');
   entry.className = `log-entry ${type}`;
   entry.textContent = `${ts} — ${message}`;
   log.appendChild(entry);
-
-  // Auto-scroll to bottom
   log.scrollTop = log.scrollHeight;
 }
 
@@ -233,8 +204,6 @@ function initActivityLog() {
 
 /* ─────────────────────────────────────────────
    SECTION 8: SIMULATE INCIDENT
-   Core flow: pick a service, trigger incident state,
-   update UI across all pages.
 ───────────────────────────────────────────── */
 function initSimulateButton() {
   document.getElementById('simulate-btn').addEventListener('click', simulateIncident);
@@ -242,26 +211,20 @@ function initSimulateButton() {
 
 function simulateIncident() {
   if (state.activeIncident) {
-    // Don't allow a second incident while one is active
     addLogEntry('Cannot simulate: an incident is already active.', 'warn');
     return;
   }
-
-  // Must have at least one project registered to simulate
   if (!state.projects || state.projects.length === 0) {
     addLogEntry('Add a project first before simulating an incident.', 'warn');
     navigateTo('projects');
     return;
   }
 
-  // Pick a random project as the affected service
-  const proj = state.projects[Math.floor(Math.random() * state.projects.length)];
-  const svcName = proj.name; // e.g. "owner/repo"
-
-  // Build incident object
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const ts  = () => {
+  const proj    = state.projects[Math.floor(Math.random() * state.projects.length)];
+  const svcName = proj.name;
+  const now     = new Date();
+  const pad     = n => String(n).padStart(2, '0');
+  const ts      = () => {
     const d = new Date();
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
@@ -283,8 +246,6 @@ function simulateIncident() {
     engineerTookControl: false,
   };
 
-  // ── Supabase: persist the new incident ──────────────────────
-  // Fire-and-forget — UI proceeds immediately regardless of outcome.
   saveIncident({
     id:         state.activeIncident.id,
     service:    state.activeIncident.service,
@@ -296,14 +257,9 @@ function simulateIncident() {
     commits:    null,
   });
 
-  // 1. Mark the project as critical
   proj._status = 'critical';
   renderServiceGrid();
-
-  // 2. Update stat cards
   updateStatCards();
-
-  // 3. Activity log entries (staggered)
   addLogEntry(`ALERT: ${svcName} is down — connection pool exhausted`, 'alert');
 
   setTimeout(() => {
@@ -318,31 +274,19 @@ function simulateIncident() {
   setTimeout(() => {
     state.activeIncident.tl3 = ts();
     addLogEntry(`Escalating to Bob AI for root cause analysis...`, 'info');
-
-    // 4. Show incident badge on nav
     document.getElementById('incident-badge').style.display = 'inline';
-
-    // 5. Navigate to Active Incidents
     navigateTo('incidents');
-
-    // 6. Render incident card
     renderIncidentCard();
-
-    // 7. Pre-fill Bob Investigation page
     fillBobContext();
-
-    // 8. Trigger Bob analysis (with loading delay)
     triggerBobAnalysis();
-
   }, 3000);
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 9: STAT CARDS UPDATE
-   Reflects current state in the 4 top cards.
+   SECTION 9: STAT CARDS
 ───────────────────────────────────────────── */
 function updateStatCards() {
-  const inc = state.activeIncident;
+  const inc     = state.activeIncident;
   const total   = state.projects.length || 0;
   const healthy = state.projects.filter(p => !p._status || p._status === 'healthy').length;
 
@@ -350,19 +294,16 @@ function updateStatCards() {
     document.getElementById('stat-incidents').textContent = '1';
     document.getElementById('stat-incidents').className = 'stat-value red';
     document.getElementById('stat-incidents-sub').textContent = `${inc.id} active`;
-
     document.getElementById('stat-services').textContent = `${healthy} / ${total}`;
     document.getElementById('stat-services').className = 'stat-value red';
   } else {
     document.getElementById('stat-incidents').textContent = '0';
     document.getElementById('stat-incidents').className = 'stat-value green';
     document.getElementById('stat-incidents-sub').textContent = 'No active incidents';
-
     document.getElementById('stat-services').textContent = total > 0 ? `${total} / ${total}` : '—';
     document.getElementById('stat-services').className = 'stat-value green';
   }
 
-  // Credits
   const pct = Math.round((state.bobCredits / state.bobCreditsMax) * 100);
   document.getElementById('stat-credits').textContent = `${state.bobCredits} / ${state.bobCreditsMax}`;
   document.getElementById('credits-text').textContent = `${state.bobCredits} / ${state.bobCreditsMax}`;
@@ -370,8 +311,7 @@ function updateStatCards() {
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 10: INCIDENT CARD RENDER
-   Populates and shows the incident card on page 2.
+   SECTION 10: INCIDENT CARD
 ───────────────────────────────────────────── */
 function renderIncidentCard() {
   const inc = state.activeIncident;
@@ -388,26 +328,21 @@ function renderIncidentCard() {
   document.getElementById('inc-time').textContent     = inc.startTime;
   document.getElementById('inc-status-text').textContent = 'Escalated to Bob';
 
-  // Timeline steps
   document.getElementById('tl-1-time').textContent = inc.tl1 || '—';
   document.getElementById('tl-2-time').textContent = inc.tl2 || '—';
   document.getElementById('tl-3-time').textContent = inc.tl3 || '—';
   document.getElementById('tl-4-time').textContent = '—';
 
-  // Reset timeline classes
   ['tl-1','tl-2','tl-3','tl-4'].forEach(id => {
-    const el = document.getElementById(id);
-    el.className = 'timeline-item';
+    document.getElementById(id).className = 'timeline-item';
   });
-
   document.getElementById('tl-1').classList.add('completed');
   document.getElementById('tl-2').classList.add('completed');
   document.getElementById('tl-3').classList.add('active');
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 11: BOB CONTEXT FILL
-   Populates the left panel of the Bob Investigation page.
+   SECTION 11: BOB CONTEXT
 ───────────────────────────────────────────── */
 function fillBobContext() {
   const inc = state.activeIncident;
@@ -416,7 +351,6 @@ function fillBobContext() {
   document.getElementById('bob-service').textContent = inc.service;
   document.getElementById('bob-error').textContent   = inc.errorType;
 
-  // Fake logs
   const fakeLogs = [
     `[ERROR] ${inc.service}: FATAL connection pool exhausted (max=100)`,
     `[ERROR] ${inc.service}: Timeout waiting for connection after 30000ms`,
@@ -426,18 +360,14 @@ function fillBobContext() {
     `[ERROR] ${inc.service}: Restart failed — process exited with code 1`,
     `[WARN]  ${inc.service}: Health check failing for 3 consecutive intervals`,
   ];
-
   document.getElementById('bob-logs').innerHTML = fakeLogs.join('<br>');
 
-  // Fake commits
   const commits = [
     { hash: 'a3f9c12', msg: 'feat: increase DB pool size to 100 for scale', author: 'dev-team', time: '2h ago' },
     { hash: 'b7e2d45', msg: 'fix: update connection timeout from 10s to 30s', author: 'ops-team', time: '5h ago' },
     { hash: 'c1a8f67', msg: 'chore: bump pg driver to v8.11.3', author: 'dependabot', time: '1d ago' },
   ];
-
-  const commitsList = document.getElementById('bob-commits');
-  commitsList.innerHTML = commits.map(c => `
+  document.getElementById('bob-commits').innerHTML = commits.map(c => `
     <div class="commit-item">
       <div class="commit-hash">${c.hash}</div>
       <div class="commit-msg">${c.msg}</div>
@@ -445,7 +375,6 @@ function fillBobContext() {
     </div>
   `).join('');
 
-  // Actions tried
   document.getElementById('bob-actions').innerHTML = `
     <div class="action-item">✗ Restart attempted: Failed (exit code 1)</div>
     <div class="action-item">✗ Rollback attempted: Failed (no prior healthy snapshot)</div>
@@ -454,37 +383,28 @@ function fillBobContext() {
 
 /* ─────────────────────────────────────────────
    SECTION 12: BOB ANALYSIS
-   Shows loading spinner then animates in the result.
 ───────────────────────────────────────────── */
 function triggerBobAnalysis() {
   state.bobAnalysisDone = false;
-
-  // Show loading, hide empty/result
   document.getElementById('bob-empty').style.display   = 'none';
   document.getElementById('bob-result').style.display  = 'none';
   document.getElementById('bob-loading').style.display = 'flex';
 
-  // Consume a credit
   state.bobCredits++;
   updateStatCards();
 
-  // After 2 seconds, show the result
   setTimeout(() => {
     document.getElementById('bob-loading').style.display = 'none';
-
     const result = document.getElementById('bob-result');
     result.style.display = 'block';
 
     document.getElementById('bob-root-cause').textContent =
       'Database connection pool exhausted. Max connections (100) reached due to recent pool size increase combined with a traffic spike. Connections are not being released properly.';
-
     document.getElementById('bob-fix').textContent =
       'Reduce pool size from 100 to 50 and restart the connection manager. Audit connection release logic in the query handler — suspected missing .release() call in error path.';
+    document.getElementById('bob-risk').textContent = 'LOW';
+    document.getElementById('bob-risk').className   = 'risk-badge low';
 
-    document.getElementById('bob-risk').textContent  = 'LOW';
-    document.getElementById('bob-risk').className    = 'risk-badge low';
-
-    // Animate confidence bar to 91%
     setTimeout(() => {
       document.getElementById('bob-confidence-fill').style.width = '91%';
       document.getElementById('bob-confidence-pct').textContent  = '91%';
@@ -497,7 +417,6 @@ function triggerBobAnalysis() {
 
 /* ─────────────────────────────────────────────
    SECTION 13: INCIDENT ACTIONS
-   "Take Control" and "View Bob Analysis" buttons.
 ───────────────────────────────────────────── */
 function initIncidentActions() {
   document.getElementById('take-control-btn').addEventListener('click', () => {
@@ -505,8 +424,6 @@ function initIncidentActions() {
     state.activeIncident.engineerTookControl = true;
     addLogEntry('Engineer took manual control of the incident.', 'warn');
     document.getElementById('inc-status-text').textContent = 'Engineer in control';
-
-    // ── Supabase: record that an engineer took over ──────────
     updateIncident(state.activeIncident.id, { status: 'engineer_control' });
   });
 
@@ -517,7 +434,6 @@ function initIncidentActions() {
 
 /* ─────────────────────────────────────────────
    SECTION 14: GENERATE POSTMORTEM
-   Creates a postmortem record and resolves the incident.
 ───────────────────────────────────────────── */
 function initGeneratePostmortem() {
   document.getElementById('gen-postmortem-btn').addEventListener('click', () => {
@@ -528,38 +444,29 @@ function initGeneratePostmortem() {
     const pad = n => String(n).padStart(2, '0');
     const ts  = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-    // Mark resolved
     inc.resolved = true;
     inc.tl4 = ts;
     state.activeIncident = null;
 
-    // ── Supabase: mark incident resolved ────────────────────
     updateIncident(inc.id, {
-      status:      'resolved',
-      resolved_at: now.toISOString(),
-      root_cause:  'Database connection pool exhausted. Max connections reached.',
+      status:        'resolved',
+      resolved_at:   now.toISOString(),
+      root_cause:    'Database connection pool exhausted. Max connections reached.',
       suggested_fix: 'Reduce pool size from 100 to 50 and restart the connection manager.',
-      confidence:  91,
+      confidence:    91,
     });
 
-    // Restore project to healthy
     const proj = state.projects.find(p => p.name === inc.service);
     if (proj) proj._status = 'healthy';
 
-    // Update UI
     renderServiceGrid();
     updateStatCards();
-
-    // Hide incident badge
     document.getElementById('incident-badge').style.display = 'none';
-
-    // Update incident card timeline
     document.getElementById('tl-4').className = 'timeline-item resolved';
     document.getElementById('tl-4-time').textContent = ts;
     document.getElementById('tl-3').className = 'timeline-item completed';
     document.getElementById('inc-status-text').textContent = 'Resolved';
 
-    // Add postmortem record
     const pm = {
       id: inc.id,
       service: inc.service,
@@ -567,10 +474,10 @@ function initGeneratePostmortem() {
       rootCause: 'Database connection pool exhausted. Max connections reached.',
       status: 'resolved',
       timeline: [
-        { time: inc.tl1,  event: `Alert triggered — ${inc.service} connection pool exhausted` },
-        { time: inc.tl2,  event: 'Auto-restart attempted — failed (exit code 1)' },
-        { time: inc.tl3,  event: 'Escalated to Bob AI for root cause analysis' },
-        { time: ts,       event: 'Fix applied. Service restored. Incident resolved.' },
+        { time: inc.tl1, event: `Alert triggered — ${inc.service} connection pool exhausted` },
+        { time: inc.tl2, event: 'Auto-restart attempted — failed (exit code 1)' },
+        { time: inc.tl3, event: 'Escalated to Bob AI for root cause analysis' },
+        { time: ts,      event: 'Fix applied. Service restored. Incident resolved.' },
       ],
       rca: 'Database connection pool exhausted due to pool size increase from 50 to 100 combined with a traffic spike. Connections were not being released in the error path of the query handler, causing pool depletion under load.',
       prevention: [
@@ -585,7 +492,6 @@ function initGeneratePostmortem() {
     state.postmortems.unshift(pm);
     renderPostmortemTable();
 
-    // ── Supabase: persist the postmortem ────────────────────
     savePostmortem({
       incident_id:        pm.id,
       service:            pm.service,
@@ -596,23 +502,17 @@ function initGeneratePostmortem() {
     });
 
     addLogEntry(`Postmortem generated for ${inc.id}. Incident resolved.`, 'ok');
-
-    // Navigate to postmortem page
     navigateTo('postmortem');
   });
 }
 
 /* ─────────────────────────────────────────────
    SECTION 15: POSTMORTEM TABLE
-   Renders the table and handles row expansion.
 ───────────────────────────────────────────── */
 function renderPostmortemTable() {
   const tbody = document.getElementById('postmortem-tbody');
   tbody.innerHTML = '';
-
-  // Combine new + historical
   const all = [...state.postmortems, ...historicalPostmortems];
-
   all.forEach((pm, idx) => {
     const tr = document.createElement('tr');
     tr.dataset.idx = idx;
@@ -629,41 +529,28 @@ function renderPostmortemTable() {
 }
 
 function expandPostmortem(pm, row) {
-  // Deselect all rows
   document.querySelectorAll('#postmortem-tbody tr').forEach(r => r.classList.remove('selected'));
   row.classList.add('selected');
 
   const detail = document.getElementById('postmortem-detail');
   detail.style.display = 'block';
-
   document.getElementById('pm-detail-title').textContent = `Postmortem: ${pm.id}`;
 
-  // Timeline
-  const tlEl = document.getElementById('pm-timeline');
-  tlEl.innerHTML = pm.timeline.map(t => `
+  document.getElementById('pm-timeline').innerHTML = pm.timeline.map(t => `
     <div class="pm-timeline-entry">
       <span class="pm-tl-time">${t.time}</span>
       <span class="pm-tl-event">${t.event}</span>
     </div>
   `).join('');
 
-  // RCA
   document.getElementById('pm-rca').textContent = pm.rca;
-
-  // Prevention
-  const prevEl = document.getElementById('pm-prevention');
-  prevEl.innerHTML = pm.prevention.map(p => `<li>${p}</li>`).join('');
-
-  // Scroll to detail
+  document.getElementById('pm-prevention').innerHTML = pm.prevention.map(p => `<li>${p}</li>`).join('');
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-  // Wire export button
   document.getElementById('export-md-btn').onclick = () => exportMarkdown(pm);
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 16: EXPORT AS MARKDOWN
-   Generates a .md file and triggers a download.
+   SECTION 16: EXPORT MARKDOWN
 ───────────────────────────────────────────── */
 function exportMarkdown(pm) {
   const lines = [
@@ -690,7 +577,6 @@ function exportMarkdown(pm) {
     `---`,
     `*Generated by SRE-Bot*`,
   ];
-
   const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -702,138 +588,18 @@ function exportMarkdown(pm) {
 
 /* ─────────────────────────────────────────────
    SECTION 17: SETTINGS
-   Profile display, Bob AI prefs, notifications,
-   connection status checks, danger zone actions.
 ───────────────────────────────────────────── */
 function initSettings() {
-
-  // ── Slider: Bob confidence threshold ────────────────────
-  const slider   = document.getElementById('bob-confidence');
-  const sliderVal= document.getElementById('bob-confidence-val');
-  slider.addEventListener('input', () => {
-    sliderVal.textContent = slider.value + '%';
-  });
-
-  // ── Save button ──────────────────────────────────────────
   document.getElementById('save-settings-btn').addEventListener('click', () => {
-    // Persist preferences to localStorage
-    localStorage.setItem('sre_bob_threshold',   slider.value);
-    localStorage.setItem('sre_auto_bob',        document.getElementById('toggle-auto-bob').checked);
-    localStorage.setItem('sre_webhook_url',     document.getElementById('webhook-url').value.trim());
-    localStorage.setItem('sre_notif_critical',  document.getElementById('notif-critical').checked);
-    localStorage.setItem('sre_notif_resolved',  document.getElementById('notif-resolved').checked);
-    localStorage.setItem('sre_notif_bob',       document.getElementById('notif-bob').checked);
-
     const toast = document.getElementById('settings-toast');
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2500);
+    setTimeout(() => toast.classList.remove('show'), 2800);
   });
-
-  // ── Load saved preferences ───────────────────────────────
-  const savedThreshold = localStorage.getItem('sre_bob_threshold');
-  if (savedThreshold) {
-    slider.value = savedThreshold;
-    sliderVal.textContent = savedThreshold + '%';
-  }
-  const savedWebhook = localStorage.getItem('sre_webhook_url');
-  if (savedWebhook) document.getElementById('webhook-url').value = savedWebhook;
-
-  if (localStorage.getItem('sre_auto_bob') === 'false')
-    document.getElementById('toggle-auto-bob').checked = false;
-  if (localStorage.getItem('sre_notif_critical') === 'false')
-    document.getElementById('notif-critical').checked = false;
-  if (localStorage.getItem('sre_notif_resolved') === 'false')
-    document.getElementById('notif-resolved').checked = false;
-  if (localStorage.getItem('sre_notif_bob') === 'true')
-    document.getElementById('notif-bob').checked = true;
-
-  // ── Danger zone: sign out ────────────────────────────────
-  document.getElementById('settings-signout-btn').addEventListener('click', async () => {
-    await signOut();
-    location.reload();
-  });
-
-  // ── Danger zone: clear local data ───────────────────────
-  document.getElementById('settings-clear-btn').addEventListener('click', () => {
-    if (!confirm('Reset local incident counter and state? This does not delete Supabase data.')) return;
-    state.activeIncident  = null;
-    state.incidentCounter = 1;
-    state.postmortems     = [];
-    state.bobAnalysisDone = false;
-    renderServiceGrid();
-    renderPostmortemTable();
-    updateStatCards();
-    document.getElementById('incident-badge').style.display = 'none';
-    document.getElementById('incident-card').style.display  = 'none';
-    document.getElementById('incidents-empty').style.display= 'flex';
-    addLogEntry('Local data cleared.', 'warn');
-    const toast = document.getElementById('settings-toast');
-    toast.textContent = 'Local data cleared.';
-    toast.classList.add('show');
-    setTimeout(() => { toast.classList.remove('show'); toast.textContent = 'Settings saved.'; }, 2500);
-  });
-}
-
-/* populateSettingsProfile(user)
-   Called after sign-in to fill in the profile card
-   and run connection checks. */
-function populateSettingsProfile(user) {
-  if (!user) return;
-
-  // Avatar initials
-  const initials = user.email.slice(0, 2).toUpperCase();
-  document.getElementById('settings-avatar').textContent        = initials;
-  document.getElementById('settings-profile-email').textContent = user.email;
-  document.getElementById('settings-profile-meta').textContent  =
-    'GitHub email on file: ' + (user.email || '—');
-
-  // Supabase project URL (read-only reference)
-  const urlEl = document.getElementById('settings-project-url');
-  if (urlEl) urlEl.textContent = 'Supabase project: ' + (window.__SUPABASE_URL__ || 'configured in supabase.js');
-
-  // Run connection checks
-  checkConnections();
-}
-
-async function checkConnections() {
-  // ── Supabase ─────────────────────────────────────────────
-  setConn('supabase', 'checking', 'Checking...');
-  try {
-    const { error } = await supabase.from('projects').select('id').limit(1);
-    if (error) throw error;
-    setConn('supabase', 'ok', 'Connected');
-  } catch {
-    setConn('supabase', 'error', 'Error');
-  }
-
-  // ── GitHub API ───────────────────────────────────────────
-  setConn('github', 'checking', 'Checking...');
-  try {
-    const res = await fetch('https://api.github.com/rate_limit');
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const remaining = data.rate?.remaining ?? '?';
-    setConn('github', 'ok', `${remaining} req/hr remaining`);
-  } catch {
-    setConn('github', 'error', 'Unreachable');
-  }
-
-  // ── Realtime ─────────────────────────────────────────────
-  // If we got this far and Supabase connected, realtime is likely active
-  setConn('realtime', 'ok', 'Active');
-}
-
-function setConn(name, state, label) {
-  const dot    = document.getElementById(`conn-${name}-dot`);
-  const status = document.getElementById(`conn-${name}-status`);
-  if (dot)    dot.className    = `settings-conn-dot ${state}`;
-  if (status) status.textContent = label;
 }
 
 /* ─────────────────────────────────────────────
    SECTION 18A: AUTH
-   Email OTP sign-in flow using Supabase Auth.
-   Shows a fullscreen overlay until the user is verified.
+   Email OTP sign-in flow. Completely self-contained.
 ───────────────────────────────────────────── */
 function initAuth() {
   const overlay    = document.getElementById('auth-overlay');
@@ -852,11 +618,10 @@ function initAuth() {
   }
   function clearError() { errorEl.style.display = 'none'; }
 
-  // ── OTP box keyboard wiring ──────────────────────────────
-  // Auto-advance to next box, backspace goes back.
+  // OTP box keyboard wiring
   otpBoxes.forEach((box, i) => {
     box.addEventListener('input', () => {
-      box.value = box.value.replace(/\D/g, '').slice(-1); // digits only
+      box.value = box.value.replace(/\D/g, '').slice(-1);
       if (box.value) {
         box.classList.add('filled');
         if (i < otpBoxes.length - 1) otpBoxes[i + 1].focus();
@@ -871,7 +636,6 @@ function initAuth() {
         otpBoxes[i - 1].classList.remove('filled');
       }
     });
-    // Handle paste of full 6-digit code
     box.addEventListener('paste', e => {
       e.preventDefault();
       const pasted = (e.clipboardData || window.clipboardData)
@@ -886,7 +650,7 @@ function initAuth() {
     });
   });
 
-  // ── Step 1: Send OTP ────────────────────────────────────
+  // Step 1: Send OTP
   sendBtn.addEventListener('click', async () => {
     clearError();
     const email = emailInput.value.trim();
@@ -907,19 +671,17 @@ function initAuth() {
       return;
     }
 
-    // Move to OTP step
     document.getElementById('auth-email-display').textContent = email;
     stepEmail.style.display = 'none';
     stepOtp.style.display   = 'block';
     otpBoxes[0].focus();
   });
 
-  // Allow pressing Enter on email field
   emailInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') sendBtn.click();
   });
 
-  // ── Step 2: Verify OTP ──────────────────────────────────
+  // Step 2: Verify OTP
   verifyBtn.addEventListener('click', async () => {
     clearError();
     const email = emailInput.value.trim();
@@ -940,17 +702,15 @@ function initAuth() {
 
     if (error) {
       showError('Invalid or expired code. Please try again.');
-      // Clear boxes
       otpBoxes.forEach(b => { b.value = ''; b.classList.remove('filled'); });
       otpBoxes[0].focus();
       return;
     }
 
-    // Success — dismiss overlay and boot the app
     onSignedIn(user);
   });
 
-  // ── Back button ─────────────────────────────────────────
+  // Back button
   backBtn.addEventListener('click', () => {
     clearError();
     stepOtp.style.display   = 'none';
@@ -961,59 +721,59 @@ function initAuth() {
 }
 
 /* ─────────────────────────────────────────────
-   onSignedIn(user)
-   Called after successful auth. Hides the overlay,
-   shows the user email in the sidebar, loads projects.
+   onSignedIn — called after successful auth
 ───────────────────────────────────────────── */
 async function onSignedIn(user) {
   state.currentUser = user;
 
-  // Hide auth overlay with fade
   const overlay = document.getElementById('auth-overlay');
   overlay.classList.add('hidden');
   setTimeout(() => overlay.style.display = 'none', 300);
 
-  // Show user email in sidebar
   const sidebarUser = document.getElementById('sidebar-user');
   sidebarUser.style.display = 'flex';
   document.getElementById('sidebar-user-email').textContent = user.email;
 
-  // Sign-out button
   document.getElementById('signout-btn').addEventListener('click', async () => {
     await signOut();
     location.reload();
   });
 
   addLogEntry(`Signed in as ${user.email}`, 'ok');
-
-  // Populate settings profile card
-  populateSettingsProfile(user);
-
-  // Load this user's projects
   await loadProjects();
 }
 
 /* ─────────────────────────────────────────────
    SECTION 18B: PROJECTS
-   Add / list / delete user projects.
-   Each project has a GitHub repo URL + live demo URL.
 ───────────────────────────────────────────── */
 function initProjects() {
-  const addBtn      = document.getElementById('add-project-btn');
-  const modal       = document.getElementById('project-modal');
-  const closeBtn    = document.getElementById('project-modal-close');
-  const cancelBtn   = document.getElementById('project-modal-cancel');
-  const saveBtn     = document.getElementById('project-save-btn');
-  const repoInput   = document.getElementById('proj-repo');
-  const demoInput   = document.getElementById('proj-demo');
-  const modalError  = document.getElementById('project-modal-error');
+  const addBtn     = document.getElementById('add-project-btn');
+  const modal      = document.getElementById('project-modal');
+  const closeBtn   = document.getElementById('project-modal-close');
+  const cancelBtn  = document.getElementById('project-modal-cancel');
+  const saveBtn    = document.getElementById('project-save-btn');
+  const repoInput  = document.getElementById('proj-repo');
+  const demoInput  = document.getElementById('proj-demo');
+  const modalError = document.getElementById('project-modal-error');
 
-  function openModal()  { modal.style.display = 'flex'; repoInput.focus(); }
+  // Auto-fill demo URL when repo URL is entered
+  repoInput.addEventListener('blur', () => {
+    const val = repoInput.value.trim();
+    if (!val.startsWith('https://github.com/')) return;
+    const p = val.replace('https://github.com/', '').split('/');
+    if (p[0] && p[1] && !demoInput.value) {
+      demoInput.value = `https://${p[0]}.github.io/${p[1]}`;
+    }
+  });
+
+  function openModal() { modal.style.display = 'flex'; repoInput.focus(); }
   function closeModal() {
     modal.style.display = 'none';
     repoInput.value = '';
     demoInput.value = '';
     modalError.style.display = 'none';
+    // Clean up any injected confirm buttons
+    modal.querySelectorAll('.confirm-anyway-btn, .github-otp-wrap').forEach(el => el.remove());
   }
 
   addBtn.addEventListener('click', openModal);
@@ -1021,11 +781,13 @@ function initProjects() {
   cancelBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
+  // Save button — full validation flow
   saveBtn.addEventListener('click', async () => {
     modalError.style.display = 'none';
     const repoUrl = repoInput.value.trim();
     const demoUrl = demoInput.value.trim();
 
+    // Basic validation
     if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
       modalError.textContent = 'Please enter a valid GitHub repository URL (https://github.com/...).';
       modalError.style.display = 'block';
@@ -1043,60 +805,78 @@ function initProjects() {
     }
 
     const parts = repoUrl.replace('https://github.com/', '').split('/');
+    const owner = parts[0];
+    const repo  = parts[1];
     const name  = parts.slice(0, 2).join('/');
+
+    // Validate demo URL belongs to same GitHub owner
+    if (!demoUrl.includes(owner)) {
+      modalError.textContent = `Demo URL must belong to the same GitHub owner "${owner}". Expected something like: https://${owner}.github.io/${repo}`;
+      modalError.style.display = 'block';
+      return;  // hard stop
+    }
 
     saveBtn.textContent = 'Checking GitHub...';
     saveBtn.disabled = true;
 
-    // ── GitHub ownership verification ────────────────────────
+    // GitHub ownership verification via commits API
     const check = await verifyGithubOwnership(repoUrl, state.currentUser.email);
-
-    if (!check.verified) {
-      if (check.githubEmail) {
-        // Emails don't match — send OTP to the GitHub email for verification
-        modalError.innerHTML =
-          `Your sign-in email (<strong>${state.currentUser.email}</strong>) doesn't match ` +
-          `the GitHub account email (<strong>${check.githubEmail}</strong>).<br><br>` +
-          `A verification code has been sent to <strong>${check.githubEmail}</strong>. ` +
-          `Enter it below to confirm ownership.`;
-        modalError.style.display = 'block';
-
-        // Send OTP to the GitHub email
-        await sendOtp(check.githubEmail);
-
-        // Swap save button to a verify flow
-        saveBtn.textContent = 'Save Project';
-        saveBtn.disabled = false;
-        showGithubOtpPrompt(modal, check.githubEmail, { name, repoUrl, demoUrl }, closeModal);
-        return;
-
-      } else if (check.error) {
-        // GitHub API failed — warn but allow save (best-effort)
-        modalError.textContent =
-          `Could not verify GitHub ownership (${check.error}). Proceeding anyway.`;
-        modalError.style.display = 'block';
-
-      } else {
-        // GitHub email is private — ask user to confirm they own the repo
-        modalError.innerHTML =
-          `The GitHub account <strong>${check.login}</strong> has a private email, ` +
-          `so we can't verify ownership automatically.<br><br>` +
-          `By saving, you confirm this is your repository.`;
-        modalError.style.display = 'block';
-      }
-    }
-
-    // Verified (or best-effort) — proceed with save
-    await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
 
     saveBtn.textContent = 'Save Project';
     saveBtn.disabled = false;
   });
 }
 
+    if (!check.verified) {
+      if (check.githubEmail) {
+        // Email mismatch — send OTP to GitHub email and wait for verification
+        modalError.innerHTML =
+          `Your sign-in email (<strong>${state.currentUser.email}</strong>) doesn't match ` +
+          `the GitHub repo's commit email (<strong>${check.githubEmail}</strong>).<br><br>` +
+          `A verification code has been sent to <strong>${check.githubEmail}</strong>. ` +
+          `Enter it below to confirm ownership.`;
+        modalError.style.display = 'block';
+        await sendOtp(check.githubEmail);
+        showGithubOtpPrompt(modal, check.githubEmail, { name, repoUrl, demoUrl }, closeModal);
+        return;  // hard stop — waits for OTP
+      }
+
+      if (check.error) {
+        // GitHub API failed — block save
+        modalError.textContent = `Could not verify GitHub ownership: ${check.error}. Please check the repo URL and try again.`;
+        modalError.style.display = 'block';
+        return;  // hard stop
+      }
+
+      // GitHub email is private (noreply) — require explicit confirmation click
+      modalError.innerHTML =
+        `The GitHub account <strong>${check.login}</strong> uses a private email so we ` +
+        `can't verify ownership automatically.<br><br>` +
+        `Only proceed if this is your repository.`;
+      modalError.style.display = 'block';
+
+      const existing = modal.querySelector('.confirm-anyway-btn');
+      if (!existing) {
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'btn btn-secondary confirm-anyway-btn';
+        confirmBtn.style.cssText = 'width:100%; margin-top:10px';
+        confirmBtn.textContent = 'Yes, this is my repo — Save anyway';
+        confirmBtn.addEventListener('click', async () => {
+          confirmBtn.remove();
+          await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
+        });
+        modal.querySelector('.modal-card').appendChild(confirmBtn);
+      }
+      return;  // hard stop — waits for confirm click
+    }
+
+    // Verified — save
+    await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
+  });
+}
+
 /* ─────────────────────────────────────────────
-   doSaveProject({ name, repoUrl, demoUrl }, closeModal)
-   Final step — actually inserts the project row.
+   doSaveProject
 ───────────────────────────────────────────── */
 async function doSaveProject({ name, repoUrl, demoUrl }, closeModal) {
   const saved = await saveProject({
@@ -1123,15 +903,11 @@ async function doSaveProject({ name, repoUrl, demoUrl }, closeModal) {
 }
 
 /* ─────────────────────────────────────────────
-   showGithubOtpPrompt(modal, githubEmail, projectData, closeModal)
-   Injects a 6-box OTP prompt into the modal so the user
-   can verify ownership of the GitHub email address.
+   showGithubOtpPrompt
 ───────────────────────────────────────────── */
 function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
   const modalCard = modal.querySelector('.modal-card');
-
-  // Inject OTP UI below the error message
-  const existing = modal.querySelector('.github-otp-wrap');
+  const existing  = modal.querySelector('.github-otp-wrap');
   if (existing) existing.remove();
 
   const wrap = document.createElement('div');
@@ -1152,7 +928,6 @@ function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
   `;
   modalCard.appendChild(wrap);
 
-  // Wire OTP boxes
   const boxes = wrap.querySelectorAll('.otp-box');
   boxes.forEach((box, i) => {
     box.addEventListener('input', () => {
@@ -1161,7 +936,8 @@ function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
     });
     box.addEventListener('keydown', e => {
       if (e.key === 'Backspace' && !box.value && i > 0) {
-        boxes[i - 1].focus(); boxes[i - 1].value = '';
+        boxes[i - 1].focus();
+        boxes[i - 1].value = '';
       }
     });
     box.addEventListener('paste', e => {
@@ -1175,7 +951,6 @@ function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
   });
   boxes[0].focus();
 
-  // Verify button
   document.getElementById('gh-otp-verify-btn').addEventListener('click', async () => {
     const token = Array.from(boxes).map(b => b.value).join('');
     const errEl = document.getElementById('gh-otp-error');
@@ -1203,12 +978,14 @@ function showGithubOtpPrompt(modal, githubEmail, projectData, closeModal) {
       return;
     }
 
-    // OTP verified — save the project
     wrap.remove();
     await doSaveProject(projectData, closeModal);
   });
 }
 
+/* ─────────────────────────────────────────────
+   loadProjects / renderProjects
+───────────────────────────────────────────── */
 async function loadProjects() {
   if (!state.currentUser) return;
   const rows = await fetchProjects(state.currentUser.id);
@@ -1259,7 +1036,6 @@ function renderProjects() {
       </div>
     `;
 
-    // Delete handler
     card.querySelector('.project-delete').addEventListener('click', async () => {
       const ok = await deleteProject(proj.id);
       if (ok) {
@@ -1275,7 +1051,6 @@ function renderProjects() {
   });
 }
 
-// Simple HTML escape to prevent XSS from user-supplied URLs
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -1285,251 +1060,7 @@ function escapeHtml(str) {
 }
 
 /* ─────────────────────────────────────────────
-   SECTION 19: PROJECT BOARD PAGE
-   Navigates to page-project-board and fills it
-   with live GitHub + Supabase data.
-───────────────────────────────────────────── */
-
-const LANG_COLORS = {
-  JavaScript:'#f7df1e', TypeScript:'#3178c6', Python:'#3572a5',
-  HTML:'#e34c26', CSS:'#563d7c', Go:'#00add8', Rust:'#dea584',
-  Java:'#b07219', 'C++':'#f34b7d', Ruby:'#701516',
-  Shell:'#89e051', Vue:'#41b883', Svelte:'#ff3e00', default:'#4f8ef7',
-};
-
-function initProjectOverlay() {
-  document.getElementById('board-back-btn').addEventListener('click', () => {
-    navigateTo('dashboard');
-  });
-}
-
-async function openProjectOverview(proj) {
-  // Switch to the board page
-  navigateTo('project-board');
-
-  // ── Header ───────────────────────────────────────────────
-  document.getElementById('board-title').textContent    = proj.name;
-  document.getElementById('board-subtitle').textContent = proj.demo_url || 'Project Overview';
-  document.getElementById('board-github-link').href     = proj.repo_url;
-  document.getElementById('board-demo-link').href       = proj.demo_url || '#';
-  if (!proj.demo_url) document.getElementById('board-demo-link').style.display = 'none';
-  else                document.getElementById('board-demo-link').style.display = '';
-
-  // ── Instant stats from local state ───────────────────────
-  const status = proj._status || 'healthy';
-  const statusEl = document.getElementById('bs-status');
-  statusEl.textContent = status.toUpperCase();
-  statusEl.className = `board-stat-val ${status === 'healthy' ? 'green' : status === 'critical' ? 'red' : 'yellow'}`;
-
-  document.getElementById('bs-uptime').textContent = proj._uptime || '—';
-  document.getElementById('bs-resp').textContent   = proj._responseTime || '—';
-  document.getElementById('bs-users').textContent  = (Math.floor(Math.random() * 180) + 12).toLocaleString();
-
-  // Reset loading states
-  ['board-repo-info','board-languages','board-files','board-commits','board-incidents'].forEach(id => {
-    document.getElementById(id).innerHTML =
-      '<div class="board-loading"><div class="mini-spinner"></div>Loading...</div>';
-  });
-  document.getElementById('bs-issues').textContent   = '…';
-  document.getElementById('bs-stars').textContent    = '…';
-  document.getElementById('bs-incidents').textContent= '…';
-  document.getElementById('bs-deploy').textContent   = '…';
-
-  // Draw sparkline immediately
-  drawBoardSparkline();
-
-  // ── GitHub API (parallel) ─────────────────────────────────
-  const [owner, repo] = proj.name.split('/');
-  if (!owner || !repo) return;
-  const base = `https://api.github.com/repos/${owner}/${repo}`;
-
-  const [repoRes, contentsRes, commitsRes, langsRes] = await Promise.allSettled([
-    fetch(base),
-    fetch(`${base}/contents`),
-    fetch(`${base}/commits?per_page=10`),
-    fetch(`${base}/languages`),
-  ]);
-
-  // Repo info
-  if (repoRes.status === 'fulfilled' && repoRes.value.ok) {
-    const r = await repoRes.value.json();
-    document.getElementById('bs-issues').textContent = r.open_issues_count ?? '—';
-    document.getElementById('bs-stars').textContent  = (r.stargazers_count ?? 0).toLocaleString();
-    document.getElementById('bs-deploy').textContent = r.pushed_at ? r.pushed_at.split('T')[0] : '—';
-
-    document.getElementById('board-repo-info').innerHTML = [
-      { k: 'Stars',       v: (r.stargazers_count ?? 0).toLocaleString() + ' ⭐' },
-      { k: 'Forks',       v: r.forks_count ?? 0 },
-      { k: 'Watchers',    v: r.watchers_count ?? 0 },
-      { k: 'Branch',      v: r.default_branch ?? 'main' },
-      { k: 'Visibility',  v: r.private ? 'Private 🔒' : 'Public 🌐' },
-      { k: 'Created',     v: r.created_at?.split('T')[0] ?? '—' },
-      { k: 'Last push',   v: r.pushed_at?.split('T')[0]  ?? '—' },
-      { k: 'License',     v: r.license?.spdx_id ?? 'None' },
-      { k: 'Description', v: r.description ?? '—' },
-    ].map(row => `
-      <div class="board-info-row">
-        <span class="board-info-key">${row.k}</span>
-        <span class="board-info-val">${escapeHtml(String(row.v))}</span>
-      </div>`).join('');
-  } else {
-    document.getElementById('board-repo-info').innerHTML =
-      '<span style="font-size:11px;color:var(--text-muted)">Could not load (private or rate-limited).</span>';
-  }
-
-  // File tree
-  if (contentsRes.status === 'fulfilled' && contentsRes.value.ok) {
-    const items = await contentsRes.value.json();
-    if (Array.isArray(items)) {
-      items.sort((a,b) => a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1);
-      document.getElementById('board-files').innerHTML = items.map(item => {
-        const isDir = item.type === 'dir';
-        const icon  = isDir
-          ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
-          : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
-        return `<div class="board-file-row ${isDir ? 'dir' : ''}">${icon}${escapeHtml(item.name)}</div>`;
-      }).join('');
-    }
-  } else {
-    document.getElementById('board-files').innerHTML =
-      '<span style="font-size:11px;color:var(--text-muted)">Could not load files.</span>';
-  }
-
-  // Commits
-  if (commitsRes.status === 'fulfilled' && commitsRes.value.ok) {
-    const commits = await commitsRes.value.json();
-    if (Array.isArray(commits) && commits.length) {
-      document.getElementById('board-commits').innerHTML = commits.map(c => `
-        <div class="board-commit-row">
-          <div class="board-commit-hash">${c.sha?.slice(0,7) ?? '—'}</div>
-          <div class="board-commit-msg">${escapeHtml(c.commit?.message?.split('\n')[0] ?? '—')}</div>
-          <div class="board-commit-meta">${escapeHtml(c.commit?.author?.name ?? '—')} · ${c.commit?.author?.date?.split('T')[0] ?? '—'}</div>
-        </div>`).join('');
-    } else {
-      document.getElementById('board-commits').innerHTML =
-        '<span style="font-size:11px;color:var(--text-muted)">No commits found.</span>';
-    }
-  } else {
-    document.getElementById('board-commits').innerHTML =
-      '<span style="font-size:11px;color:var(--text-muted)">Could not load commits.</span>';
-  }
-
-  // Languages
-  if (langsRes.status === 'fulfilled' && langsRes.value.ok) {
-    const langs = await langsRes.value.json();
-    const total = Object.values(langs).reduce((a,b) => a+b, 0);
-    if (total > 0) {
-      const sorted = Object.entries(langs).sort((a,b) => b[1]-a[1]).slice(0,8);
-      document.getElementById('board-languages').innerHTML = sorted.map(([lang, bytes]) => {
-        const pct   = ((bytes/total)*100).toFixed(1);
-        const color = LANG_COLORS[lang] || LANG_COLORS.default;
-        return `
-          <div class="board-lang-row">
-            <div class="board-lang-label"><span>${escapeHtml(lang)}</span><span>${pct}%</span></div>
-            <div class="board-lang-bar"><div class="board-lang-fill" style="width:${pct}%;background:${color}"></div></div>
-          </div>`;
-      }).join('');
-    }
-  } else {
-    document.getElementById('board-languages').innerHTML =
-      '<span style="font-size:11px;color:var(--text-muted)">Could not load language data.</span>';
-  }
-
-  // Past incidents from Supabase
-  await loadBoardIncidents(proj.name);
-}
-
-async function loadBoardIncidents(serviceName) {
-  const el = document.getElementById('board-incidents');
-  try {
-    const { data } = await supabase
-      .from('incidents')
-      .select('id, service, severity, status, started_at')
-      .eq('service', serviceName)
-      .order('started_at', { ascending: false })
-      .limit(15);
-
-    const rows = data ?? [];
-    document.getElementById('bs-incidents').textContent = rows.length;
-
-    if (rows.length === 0) {
-      el.innerHTML = '<span style="font-size:11px;color:var(--green)">✓ No incidents recorded.</span>';
-      return;
-    }
-
-    el.innerHTML = rows.map(inc => {
-      const resolved = inc.status === 'resolved';
-      return `
-        <div class="board-inc-row">
-          <span class="board-inc-id">${escapeHtml(inc.id)}</span>
-          <span class="board-inc-date">${inc.started_at ? inc.started_at.split('T')[0] : '—'}</span>
-          <span class="board-inc-status" style="${resolved
-            ? 'background:rgba(34,197,94,0.12);color:var(--green)'
-            : 'background:rgba(239,68,68,0.12);color:var(--red)'
-          }">${(inc.status ?? 'unknown').toUpperCase()}</span>
-        </div>`;
-    }).join('');
-  } catch (err) {
-    el.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Could not load incidents.</span>';
-    console.error('[Board] loadBoardIncidents:', err);
-  }
-}
-
-function drawBoardSparkline() {
-  const canvas = document.getElementById('board-sparkline');
-  if (!canvas) return;
-  const W = canvas.parentElement?.offsetWidth - 28 || 400;
-  const H = 90;
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-
-  const pts = Array.from({ length: 30 }, () => Math.floor(Math.random() * 320) + 60);
-  const min = Math.min(...pts), max = Math.max(...pts), range = max - min || 1;
-  const xStep = W / (pts.length - 1);
-  const yFor  = v => H - 8 - ((v - min) / range) * (H - 20);
-
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, 'rgba(79,142,247,0.25)');
-  grad.addColorStop(1, 'rgba(79,142,247,0)');
-
-  ctx.clearRect(0, 0, W, H);
-
-  // Fill
-  ctx.beginPath();
-  ctx.moveTo(0, yFor(pts[0]));
-  pts.forEach((v,i) => ctx.lineTo(i * xStep, yFor(v)));
-  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-
-  // Line
-  ctx.beginPath();
-  ctx.moveTo(0, yFor(pts[0]));
-  pts.forEach((v,i) => ctx.lineTo(i * xStep, yFor(v)));
-  ctx.strokeStyle = '#4f8ef7'; ctx.lineWidth = 1.5; ctx.stroke();
-
-  // Dots at each point
-  pts.forEach((v,i) => {
-    ctx.beginPath();
-    ctx.arc(i * xStep, yFor(v), 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(79,142,247,0.5)'; ctx.fill();
-  });
-
-  // Last point highlighted
-  const lx = (pts.length-1)*xStep, ly = yFor(pts[pts.length-1]);
-  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI*2);
-  ctx.fillStyle = '#4f8ef7'; ctx.fill();
-
-  // Y-axis labels
-  ctx.fillStyle = 'rgba(107,107,122,0.8)';
-  ctx.font = '9px system-ui';
-  ctx.fillText(max + 'ms', 4, 14);
-  ctx.fillText(min + 'ms', 4, H - 4);
-}
-
-/* ─────────────────────────────────────────────
-   SECTION 18: BOOT
-   Initialize everything on DOMContentLoaded.
+   BOOT
 ───────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
@@ -1546,19 +1077,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProjects();
   initProjectOverlay();
 
-  // ── Check for an existing Supabase session ───────────────
-  // If the user already signed in (session persisted in localStorage),
-  // skip the auth overlay entirely.
   const session = await getSession();
   if (session && session.user) {
     await onSignedIn(session.user);
   }
-  // If no session, the auth overlay stays visible (default state).
-
-  // ── Supabase: load persisted data on startup ─────────────
-  // Only runs after sign-in; fetchIncidents/fetchPostmortems
-  // are also called inside onSignedIn → loadProjects chain,
-  // but incident/postmortem data is global (not per-user).
 
   const dbPostmortems = await fetchPostmortems();
   if (dbPostmortems.length > 0) {
@@ -1582,15 +1104,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (activeInDB) {
     addLogEntry(`Found open incident ${activeInDB.id} in Supabase — showing on dashboard.`, 'warn');
     state.activeIncident = {
-      id:                 activeInDB.id,
-      service:            activeInDB.service,
-      errorType:          activeInDB.error_type ?? 'Unknown',
-      severity:           activeInDB.severity   ?? 'HIGH',
-      startTime:          activeInDB.started_at
-                            ? new Date(activeInDB.started_at).toLocaleString()
-                            : '—',
+      id:                  activeInDB.id,
+      service:             activeInDB.service,
+      errorType:           activeInDB.error_type ?? 'Unknown',
+      severity:            activeInDB.severity   ?? 'HIGH',
+      startTime:           activeInDB.started_at
+                             ? new Date(activeInDB.started_at).toLocaleString()
+                             : '—',
       tl1: '—', tl2: '—', tl3: '—', tl4: null,
-      resolved:           false,
+      resolved:            false,
       engineerTookControl: false,
     };
     const svc = services.find(s => s.id === activeInDB.service);
@@ -1601,7 +1123,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('incident-badge').style.display = 'inline';
   }
 
-  // ── Supabase Realtime: live incident updates ─────────────
   subscribeToIncidents((payload) => {
     const row = payload.new;
 

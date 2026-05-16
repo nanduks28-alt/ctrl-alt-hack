@@ -295,32 +295,36 @@ export async function saveProject(projectData) {
 ───────────────────────────────────────────── */
 export async function verifyGithubOwnership(repoUrl, userEmail) {
   try {
-    // Extract owner from https://github.com/owner/repo
-    const parts = repoUrl.replace('https://github.com/', '').split('/')
-    const owner = parts[0]
-    if (!owner) return { verified: false, githubEmail: null, error: 'Invalid repo URL' }
+    const parts = repoUrl.replace('https://github.com/', '').split('/');
+    const owner = parts[0];
+    const repo  = parts[1];
+    if (!owner || !repo) return { verified: false, githubEmail: null, error: 'Invalid repo URL' };
 
-    // GitHub public API — no auth needed for public profile
-    const res  = await fetch(`https://api.github.com/users/${owner}`)
-    if (!res.ok) throw new Error(`GitHub API returned ${res.status}`)
-    const user = await res.json()
+    const commitsRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`
+    );
+    if (!commitsRes.ok) throw new Error(`GitHub API returned ${commitsRes.status}`);
+    const commits = await commitsRes.json();
 
-    const githubEmail = user.email // null if user hasn't made it public
+    if (!Array.isArray(commits) || commits.length === 0) {
+      return { verified: false, githubEmail: null, error: 'No commits found in repo' };
+    }
 
-    if (!githubEmail) {
-      // Can't verify automatically — GitHub email is private.
-      // Return the login so the caller can ask the user to confirm.
-      return { verified: false, githubEmail: null, login: user.login }
+    const githubEmail = commits[0]?.commit?.author?.email ?? null;
+
+    if (!githubEmail || githubEmail.includes('noreply.github.com')) {
+      return { verified: false, githubEmail: null, login: owner };
     }
 
     if (githubEmail.toLowerCase() === userEmail.toLowerCase()) {
-      return { verified: true, githubEmail }
+      return { verified: true, githubEmail };
     }
 
-    return { verified: false, githubEmail }
+    return { verified: false, githubEmail };
+
   } catch (error) {
-    console.error('[GitHub] verifyGithubOwnership failed:', error.message)
-    return { verified: false, githubEmail: null, error: error.message }
+    console.error('[GitHub] verifyGithubOwnership failed:', error.message);
+    return { verified: false, githubEmail: null, error: error.message };
   }
 }
 
