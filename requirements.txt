@@ -1,0 +1,27 @@
+# SRE-Bot Orchestrator Service - Python Dependencies
+# ===================================================
+# Install with: pip install -r requirements.txt
+
+# Supabase Python client
+supabase>=2.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Colored terminal output (Windows support)
+colorama>=0.4.6
+
+# HTTP requests (for API integrations)
+requests>=2.31.0
+
+# Async HTTP client (for monitor agent)
+aiohttp>=3.9.0
+
+# JSON handling (built-in, but listed for documentation)
+# json - built-in
+
+# Date/time handling (built-in, but listed for documentation)
+# datetime - built-in
+
+# Type hints (built-in in Python 3.5+, but listed for documentation)
+# typing - built-in
