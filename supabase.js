@@ -359,3 +359,40 @@ export async function deleteProject(id) {
     return false
   }
 }
+
+/* ─────────────────────────────────────────────
+   syncProjectToMonitor(projectId, name, repoUrl, demoUrl)
+   Syncs a project to the monitored_projects table
+   so the Python monitor agent can track it.
+───────────────────────────────────────────── */
+export async function syncProjectToMonitor(projectId, name, repoUrl, demoUrl) {
+  try {
+    // Check if already exists
+    const { data: existing } = await supabase
+      .from('monitored_projects')
+      .select('id')
+      .eq('project_id', projectId)
+      .maybeSingle()
+
+    if (existing) return existing
+
+    const { data, error } = await supabase
+      .from('monitored_projects')
+      .insert([{
+        project_id: projectId,
+        name,
+        repo_url:  repoUrl,
+        demo_url:  demoUrl,
+        check_interval_seconds: 30,
+        is_active: true
+      }])
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error('[Supabase] syncProjectToMonitor failed:', error.message)
+    return null
+  }
+}

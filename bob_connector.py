@@ -23,8 +23,14 @@ Author: SRE-Bot Team
 import time
 import random
 import json
+import os
+import requests
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
 # ============================================================================
@@ -202,39 +208,57 @@ def _generate_ai_prompt(
 
 def _send_ai_request(prompt: str) -> Dict[str, Any]:
     """
-    Send request to AI API and get response.
-    
-    In production, this would make actual HTTP requests to watsonx, OpenAI,
-    or Azure OpenAI. For now, it simulates realistic API behavior.
+    Send request to Anthropic Claude API and get response.
     
     Args:
         prompt (str): The AI prompt to send
     
     Returns:
-        Dict[str, Any]: Simulated API response
+        Dict[str, Any]: API response from Claude
     """
+    api_key = os.getenv('ANTHROPIC_API_KEY')
     
-    # Simulate API request preparation
-    request_payload = {
-        "model": BobConfig.MODEL_NAME,
-        "prompt": prompt,
-        "temperature": BobConfig.TEMPERATURE,
-        "max_tokens": BobConfig.MAX_TOKENS,
-        "top_p": 0.9,
-        "frequency_penalty": 0.0,
-        "presence_penalty": 0.0
-    }
+    # Fall back to simulation if no API key
+    if not api_key:
+        print("⚠️  Warning: ANTHROPIC_API_KEY not set - using simulated response")
+        time.sleep(random.uniform(0.5, 1.5))
+        return _simulate_ai_response(prompt)
     
-    if BobConfig.ENABLE_DETAILED_LOGGING:
-        print(f"   Request size: {len(json.dumps(request_payload))} bytes")
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        
+        body = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt + "\n\nRespond ONLY with a valid JSON object with keys: root_cause (string), severity (CRITICAL|HIGH|MEDIUM|LOW), suggested_fix (string), confidence (integer 0-100), analysis (string). No markdown, no explanation outside the JSON."
+                }
+            ]
+        }
+        
+        if BobConfig.ENABLE_DETAILED_LOGGING:
+            print(f"   Request size: {len(json.dumps(body))} bytes")
+            print(f"   Using Claude Haiku model")
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=body,
+            timeout=BobConfig.TIMEOUT_SECONDS
+        )
+        response.raise_for_status()
+        return response.json()
     
-    # Simulate network latency
-    time.sleep(random.uniform(0.5, 1.5))
-    
-    # Simulate AI response (in production, this would be actual API response)
-    response = _simulate_ai_response(prompt)
-    
-    return response
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Warning: API request failed ({str(e)}) - using simulated response")
+        time.sleep(random.uniform(0.5, 1.5))
+        return _simulate_ai_response(prompt)
 
 
 def _simulate_ai_response(prompt: str) -> Dict[str, Any]:
@@ -364,7 +388,7 @@ def _process_ai_response(api_response: Dict[str, Any], service_name: str, error_
     into a standardized structure for the dashboard.
     
     Args:
-        api_response (Dict[str, Any]): Raw API response
+        api_response (Dict[str, Any]): Raw API response (Claude or simulated)
         service_name (str): Service name for context
         error_type (str): Error type for context
     
@@ -373,25 +397,60 @@ def _process_ai_response(api_response: Dict[str, Any], service_name: str, error_
     """
     
     try:
-        # Extract AI response content
-        content = api_response["choices"][0]["message"]["content"]
-        analysis_data = json.loads(content)
+        # Handle Claude API response format
+        if "content" in api_response:
+            # Claude returns: {"content": [{"type": "text", "text": "..."}], ...}
+            content_blocks = api_response.get("content", [])
+            text = next((b["text"] for b in content_blocks if b.get("type") == "text"), "")
+            
+            # Strip any accidental markdown fences
+            text = text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            
+            try:
+                analysis_data = json.loads(text)
+            except json.JSONDecodeError:
+                # Fallback for unparseable Claude response
+                analysis_data = {
+                    "root_cause": f"Unable to parse AI response for {service_name}",
+                    "severity": "MEDIUM",
+                    "suggested_fix": "Manual investigation required",
+                    "confidence": 30,
+                    "analysis": text[:500] if text else "No response"
+                }
+            
+            return {
+                "root_cause": analysis_data.get("root_cause", "Unknown"),
+                "severity": analysis_data.get("severity", "MEDIUM"),
+                "suggested_fix": analysis_data.get("suggested_fix", "Manual investigation required"),
+                "confidence": int(analysis_data.get("confidence", 50)),
+                "analysis": analysis_data.get("analysis", ""),
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "service_name": service_name,
+                "error_type": error_type,
+                "model_used": api_response.get("model", "claude-haiku-4-5-20251001"),
+                "tokens_used": api_response.get("usage", {}).get("input_tokens", 0) + api_response.get("usage", {}).get("output_tokens", 0)
+            }
         
-        # Structure the result
-        result = {
-            "root_cause": analysis_data.get("root_cause", "Unknown"),
-            "severity": analysis_data.get("severity", "MEDIUM"),
-            "suggested_fix": analysis_data.get("suggested_fix", "Manual investigation required"),
-            "confidence": analysis_data.get("confidence", 50),
-            "analysis": analysis_data.get("analysis", "Analysis unavailable"),
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "service_name": service_name,
-            "error_type": error_type,
-            "model_used": api_response.get("model", BobConfig.MODEL_NAME),
-            "tokens_used": api_response.get("usage", {}).get("total_tokens", 0)
-        }
+        # Handle simulated response format (fallback)
+        elif "choices" in api_response:
+            content = api_response["choices"][0]["message"]["content"]
+            analysis_data = json.loads(content)
+            
+            return {
+                "root_cause": analysis_data.get("root_cause", "Unknown"),
+                "severity": analysis_data.get("severity", "MEDIUM"),
+                "suggested_fix": analysis_data.get("suggested_fix", "Manual investigation required"),
+                "confidence": analysis_data.get("confidence", 50),
+                "analysis": analysis_data.get("analysis", "Analysis unavailable"),
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "service_name": service_name,
+                "error_type": error_type,
+                "model_used": api_response.get("model", BobConfig.MODEL_NAME),
+                "tokens_used": api_response.get("usage", {}).get("total_tokens", 0)
+            }
         
-        return result
+        else:
+            raise KeyError("Unknown response format")
         
     except (KeyError, json.JSONDecodeError) as e:
         # Fallback if response parsing fails
@@ -405,7 +464,7 @@ def _process_ai_response(api_response: Dict[str, Any], service_name: str, error_
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "service_name": service_name,
             "error_type": error_type,
-            "model_used": BobConfig.MODEL_NAME,
+            "model_used": "unknown",
             "tokens_used": 0
         }
 

@@ -14,7 +14,7 @@ import {
   saveIncident,
   updateIncident,
   savePostmortem,
-  fetchIncidents, 
+  fetchIncidents,
   fetchPostmortems,
   subscribeToIncidents,
   sendOtp,
@@ -25,21 +25,38 @@ import {
   fetchProjects,
   deleteProject,
   verifyGithubOwnership,
+  syncProjectToMonitor,
 } from './supabase.js'
+
+/* ─────────────────────────────────────────────
+   BACKEND CLIENT IMPORTS
+   Integration with Python orchestrator service
+───────────────────────────────────────────── */
+import {
+  checkOrchestratorHealth,
+  triggerRealWorkflow,
+  subscribeToWorkflowUpdates,
+  unsubscribeFromWorkflow,
+  getWorkflowStageInfo,
+  logWorkflowEvent,
+  WORKFLOW_STAGES,
+} from './backend_client.js'
 
 /* ─────────────────────────────────────────────
    SECTION 1: STATE
    Central state object for the whole app.
 ───────────────────────────────────────────── */
 const state = {
-  activeIncident: null,   // null = no incident, object = current incident
+  activeIncident: null,
   bobCredits: 2,
   bobCreditsMax: 40,
   incidentCounter: 1,
-  postmortems: [],        // list of postmortem records
-  bobAnalysisDone: false, // whether Bob has returned a result
-  currentUser: null,      // signed-in Supabase user object
-  projects: [],           // user's registered projects
+  postmortems: [],
+  bobAnalysisDone: false,
+  currentUser: null,
+  projects: [],
+  workflowChannel: null,   // realtime channel for current incident workflow
+  orchestratorOnline: false,
 };
 
 /* ─────────────────────────────────────────────
@@ -240,7 +257,7 @@ function initSimulateButton() {
   document.getElementById('simulate-btn').addEventListener('click', simulateIncident);
 }
 
-function simulateIncident() {
+async function simulateIncident() {
   if (state.activeIncident) {
     // Don't allow a second incident while one is active
     addLogEntry('Cannot simulate: an incident is already active.', 'warn');
@@ -252,6 +269,20 @@ function simulateIncident() {
     addLogEntry('Add a project first before simulating an incident.', 'warn');
     navigateTo('projects');
     return;
+  }
+
+  // Check orchestrator health
+  addLogEntry('Checking orchestrator status...', 'info');
+  const health = await checkOrchestratorHealth();
+  
+  const useRealWorkflow = health.online;
+  
+  if (useRealWorkflow) {
+    logWorkflowEvent('Orchestrator is online - using real workflow', 'success');
+    addLogEntry('🤖 Orchestrator online. Using real AI workflow.', 'ok');
+  } else {
+    logWorkflowEvent(`Orchestrator offline (${health.reason}) - using simulation mode`, 'warn');
+    addLogEntry(`⚠️  Orchestrator offline. Using simulation mode.`, 'warn');
   }
 
   // Pick a random project as the affected service
@@ -269,6 +300,17 @@ function simulateIncident() {
   const incidentId = `INC-${String(state.incidentCounter).padStart(4, '0')}`;
   state.incidentCounter++;
 
+  // Generate fake logs for the incident
+  const fakeLogs = [
+    `[ERROR] ${svcName}: FATAL connection pool exhausted (max=100)`,
+    `[ERROR] ${svcName}: Timeout waiting for connection after 30000ms`,
+    `[WARN]  ${svcName}: Queue depth: 847 pending requests`,
+    `[ERROR] ${svcName}: DB connection refused — too many clients`,
+    `[INFO]  ${svcName}: Attempting graceful restart...`,
+    `[ERROR] ${svcName}: Restart failed — process exited with code 1`,
+    `[WARN]  ${svcName}: Health check failing for 3 consecutive intervals`,
+  ].join('\n');
+
   state.activeIncident = {
     id: incidentId,
     service: svcName,
@@ -281,20 +323,9 @@ function simulateIncident() {
     tl4: null,
     resolved: false,
     engineerTookControl: false,
+    useRealWorkflow: useRealWorkflow,
+    workflowSubscription: null
   };
-
-  // ── Supabase: persist the new incident ──────────────────────
-  // Fire-and-forget — UI proceeds immediately regardless of outcome.
-  saveIncident({
-    id:         state.activeIncident.id,
-    service:    state.activeIncident.service,
-    error_type: state.activeIncident.errorType,
-    severity:   state.activeIncident.severity,
-    status:     'active',
-    started_at: now.toISOString(),
-    logs:       null,
-    commits:    null,
-  });
 
   // 1. Mark the project as critical
   proj._status = 'critical';
@@ -303,9 +334,75 @@ function simulateIncident() {
   // 2. Update stat cards
   updateStatCards();
 
-  // 3. Activity log entries (staggered)
+  // 3. Activity log
   addLogEntry(`ALERT: ${svcName} is down — connection pool exhausted`, 'alert');
 
+  if (useRealWorkflow) {
+    // ═══════════════════════════════════════════════════════════
+    // REAL WORKFLOW MODE - Orchestrator processes the incident
+    // ═══════════════════════════════════════════════════════════
+    
+    logWorkflowEvent(`Creating incident ${incidentId} for orchestrator`);
+    
+    // Create incident with status='pending_analysis' to trigger orchestrator
+    const result = await triggerRealWorkflow({
+      id: incidentId,
+      service: svcName,
+      error_type: 'timeout',
+      severity: 'CRITICAL',
+      started_at: now.toISOString(),
+      logs: fakeLogs,
+      commits: null
+    });
+
+    if (result.success) {
+      logWorkflowEvent('Incident created successfully', 'success');
+      addLogEntry(`Incident ${incidentId} created. Orchestrator processing...`, 'info');
+      
+      // Subscribe to workflow updates
+      const subscription = subscribeToWorkflowUpdates(incidentId, (update) => {
+        handleWorkflowUpdate(incidentId, update);
+      });
+      
+      state.activeIncident.workflowSubscription = subscription;
+      
+      // Show incident badge and navigate
+      document.getElementById('incident-badge').style.display = 'inline';
+      navigateTo('incidents');
+      renderIncidentCard();
+      fillBobContext();
+      
+    } else {
+      logWorkflowEvent(`Failed to create incident: ${result.error}`, 'error');
+      addLogEntry(`Failed to create incident: ${result.error}`, 'alert');
+      // Fall back to simulation mode
+      simulateIncidentFallback(proj, svcName, incidentId, now, ts);
+    }
+    
+  } else {
+    // ═══════════════════════════════════════════════════════════
+    // SIMULATION MODE - Frontend simulates the workflow
+    // ═══════════════════════════════════════════════════════════
+    
+    simulateIncidentFallback(proj, svcName, incidentId, now, ts);
+  }
+}
+
+// Fallback simulation mode (original behavior)
+function simulateIncidentFallback(proj, svcName, incidentId, now, ts) {
+  // Save incident with 'active' status (not pending_analysis)
+  saveIncident({
+    id: incidentId,
+    service: svcName,
+    error_type: 'Connection timeout / Pool exhausted',
+    severity: 'CRITICAL',
+    status: 'active',
+    started_at: now.toISOString(),
+    logs: null,
+    commits: null,
+  });
+
+  // Staggered log entries (original simulation)
   setTimeout(() => {
     state.activeIncident.tl2 = ts();
     addLogEntry(`Auto-restart triggered for ${svcName}`, 'warn');
@@ -319,22 +416,66 @@ function simulateIncident() {
     state.activeIncident.tl3 = ts();
     addLogEntry(`Escalating to Bob AI for root cause analysis...`, 'info');
 
-    // 4. Show incident badge on nav
     document.getElementById('incident-badge').style.display = 'inline';
-
-    // 5. Navigate to Active Incidents
     navigateTo('incidents');
-
-    // 6. Render incident card
     renderIncidentCard();
-
-    // 7. Pre-fill Bob Investigation page
     fillBobContext();
-
-    // 8. Trigger Bob analysis (with loading delay)
     triggerBobAnalysis();
-
   }, 3000);
+}
+
+// Handle real-time workflow updates from orchestrator
+function handleWorkflowUpdate(incidentId, update) {
+  if (!state.activeIncident || state.activeIncident.id !== incidentId) {
+    return;
+  }
+
+  const stageInfo = getWorkflowStageInfo(update.stage);
+  
+  logWorkflowEvent(`Stage: ${stageInfo.label} - ${stageInfo.description}`);
+  addLogEntry(`${stageInfo.icon} ${stageInfo.label}: ${stageInfo.description}`, 'info');
+
+  // Update incident card if visible
+  if (update.stage === 'completed') {
+    if (update.status === 'resolved') {
+      addLogEntry(`✅ Incident resolved automatically!`, 'ok');
+      addLogEntry(`Recovery action: ${update.recoveryAction}`, 'ok');
+      
+      // Mark incident as resolved
+      state.activeIncident.resolved = true;
+      state.activeIncident.tl4 = new Date().toLocaleTimeString();
+      
+      // Update UI
+      const proj = state.projects.find(p => p.name === state.activeIncident.service);
+      if (proj) proj._status = 'healthy';
+      renderServiceGrid();
+      updateStatCards();
+      document.getElementById('incident-badge').style.display = 'none';
+      
+    } else if (update.status === 'analyzed') {
+      addLogEntry(`🤖 Bob AI analysis complete!`, 'ok');
+      addLogEntry(`Root cause: ${update.rootCause}`, 'info');
+      addLogEntry(`Confidence: ${update.confidence}%`, 'info');
+      
+      // Update Bob Investigation page with real results
+      document.getElementById('bob-root-cause').textContent = update.rootCause;
+      document.getElementById('bob-fix').textContent = update.suggestedFix;
+      document.getElementById('bob-confidence-fill').style.width = `${update.confidence}%`;
+      document.getElementById('bob-confidence-pct').textContent = `${update.confidence}%`;
+      
+      // Show Bob result
+      document.getElementById('bob-loading').style.display = 'none';
+      document.getElementById('bob-result').style.display = 'block';
+      
+      state.bobAnalysisDone = true;
+    }
+    
+    // Unsubscribe from updates
+    if (state.activeIncident.workflowSubscription) {
+      unsubscribeFromWorkflow(state.activeIncident.workflowSubscription);
+      state.activeIncident.workflowSubscription = null;
+    }
+  }
 }
 
 /* ─────────────────────────────────────────────
@@ -821,9 +962,19 @@ async function checkConnections() {
     setConn('github', 'error', 'Unreachable');
   }
 
-  // ── Realtime ─────────────────────────────────────────────
-  // If we got this far and Supabase connected, realtime is likely active
-  setConn('realtime', 'ok', 'Active');
+  // ── Realtime / Orchestrator ───────────────────────────────
+  setConn('realtime', 'checking', 'Checking...');
+  try {
+    const health = await checkOrchestratorHealth();
+    state.orchestratorOnline = health.online;
+    if (health.online) {
+      setConn('realtime', 'ok', `Orchestrator online · ${health.message}`);
+    } else {
+      setConn('realtime', 'error', `Orchestrator offline · ${health.message}`);
+    }
+  } catch {
+    setConn('realtime', 'error', 'Could not check');
+  }
 }
 
 function setConn(name, state, label) {
@@ -1110,6 +1261,12 @@ async function doSaveProject({ name, repoUrl, demoUrl }, closeModal) {
   updateStatCards();
   closeModal();
   addLogEntry(`Project added: ${name}`, 'ok');
+
+  // Sync to monitored_projects so the Python monitor agent tracks it
+  syncProjectToMonitor(saved.id, saved.name, saved.repo_url, saved.demo_url)
+    .then(r => {
+      if (r) addLogEntry(`Monitor agent now watching ${name}`, 'info');
+    });
 }
 
 /* ─────────────────────────────────────────────
@@ -1208,6 +1365,8 @@ async function loadProjects() {
   updateStatCards();
   if (rows.length > 0) {
     addLogEntry(`Loaded ${rows.length} project(s) from Supabase.`, 'info');
+    // Backfill monitored_projects for any existing projects
+    rows.forEach(p => syncProjectToMonitor(p.id, p.name, p.repo_url, p.demo_url));
   }
 }
 

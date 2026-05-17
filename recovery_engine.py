@@ -20,36 +20,41 @@ Author: SRE-Bot Team
 
 import time
 import random
-from typing import Dict, Any
+import os
+import requests
+from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
-def attempt_recovery(service_name: str, error_type: str) -> Dict[str, Any]:
+def attempt_recovery(
+    service_name: str,
+    error_type: str,
+    demo_url: Optional[str] = None,
+    repo_url: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Attempt automatic recovery for a service incident.
+    Attempt real automatic recovery for a service incident.
     
-    This function simulates recovery strategies based on the error type,
-    introduces realistic delays, and randomly determines success/failure
-    to mimic real-world recovery scenarios.
+    This function performs actual recovery actions including:
+    - Waiting for auto-recovery and re-checking the service
+    - Triggering GitHub Actions redeployment (if token available)
+    - HTTP health checks to verify recovery
     
     Args:
-        service_name (str): Name of the affected service (e.g., "payment-api", "auth-service")
-        error_type (str): Type of error encountered (e.g., "timeout", "database", "memory")
+        service_name (str): Name of the affected service
+        error_type (str): Type of error encountered
+        demo_url (str, optional): Live demo URL to check
+        repo_url (str, optional): GitHub repository URL
     
     Returns:
         Dict[str, Any]: Recovery result containing:
             - success (bool): Whether recovery was successful
             - action (str): The recovery action that was attempted
             - message (str): Human-readable description of the outcome
-    
-    Example:
-        >>> result = attempt_recovery("payment-api", "timeout")
-        >>> print(result)
-        {'success': True, 'action': 'Service restart', 'message': 'Successfully restarted payment-api service'}
     """
-    
-    # Normalize error type to lowercase for consistent matching
-    error_type_lower = error_type.lower()
-    
     print(f"\n{'='*60}")
     print(f"🔧 RECOVERY ENGINE INITIATED")
     print(f"{'='*60}")
@@ -57,40 +62,74 @@ def attempt_recovery(service_name: str, error_type: str) -> Dict[str, Any]:
     print(f"Error Type: {error_type}")
     print(f"{'='*60}\n")
     
-    # Determine recovery strategy based on error type
-    recovery_strategy = _select_recovery_strategy(error_type_lower)
+    if not demo_url:
+        # No URL = can't do anything real, return failed
+        return {
+            "success": False,
+            "action": "No demo URL available for recovery",
+            "message": f"Cannot attempt recovery for {service_name} — no URL registered"
+        }
     
-    print(f"📋 Selected Strategy: {recovery_strategy['action']}")
-    print(f"⏱️  Estimated Time: {recovery_strategy['duration']}s")
-    print(f"\n🔄 Executing recovery procedure...\n")
+    print(f"🔧 Attempting recovery for {service_name} at {demo_url}")
     
-    # Simulate recovery process with realistic delays
-    _simulate_recovery_process(recovery_strategy['duration'])
+    # Step 1: Wait 15 seconds and re-check (services often auto-restart)
+    print("  Waiting 15s for potential auto-recovery...")
+    time.sleep(15)
     
-    # Randomly determine success or failure (70% success rate)
-    success = random.random() < 0.7
+    try:
+        response = requests.get(demo_url, timeout=10)
+        if response.status_code < 500:
+            return {
+                "success": True,
+                "action": "Service auto-recovered",
+                "message": f"{service_name} returned HTTP {response.status_code} after 15s wait — auto-recovery successful"
+            }
+    except Exception:
+        pass
     
-    # Generate result message
-    if success:
-        message = f"✅ Successfully {recovery_strategy['success_msg']} for {service_name}"
-        print(f"\n{'='*60}")
-        print(f"✅ RECOVERY SUCCESSFUL")
-        print(f"{'='*60}")
-        print(f"{message}")
-        print(f"{'='*60}\n")
-    else:
-        message = f"❌ Failed to {recovery_strategy['failure_msg']} for {service_name}. Escalating to Bob AI."
-        print(f"\n{'='*60}")
-        print(f"❌ RECOVERY FAILED")
-        print(f"{'='*60}")
-        print(f"{message}")
-        print(f"{'='*60}\n")
+    # Step 2: Try GitHub Actions redeploy if token available
+    github_token = os.getenv('GITHUB_TOKEN')
+    if github_token and repo_url and 'github.com' in repo_url:
+        try:
+            parts = repo_url.replace('https://github.com/', '').replace('.git', '').split('/')
+            if len(parts) >= 2:
+                owner, repo = parts[0], parts[1]
+                dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/deploy.yml/dispatches"
+                
+                print(f"  Triggering GitHub Actions redeploy for {owner}/{repo}...")
+                r = requests.post(
+                    dispatch_url,
+                    headers={
+                        "Authorization": f"Bearer {github_token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    },
+                    json={"ref": "main"},
+                    timeout=10
+                )
+                
+                if r.status_code in (204, 200):
+                    print("  ✓ GitHub Actions redeploy triggered")
+                    print("  Waiting 30s for deployment...")
+                    time.sleep(30)
+                    
+                    # Check if service is back up
+                    check = requests.get(demo_url, timeout=10)
+                    if check.status_code < 500:
+                        return {
+                            "success": True,
+                            "action": "GitHub Actions redeploy triggered",
+                            "message": f"Redeployment of {service_name} succeeded"
+                        }
+                else:
+                    print(f"  ✗ GitHub Actions trigger failed: HTTP {r.status_code}")
+        except Exception as e:
+            print(f"  ✗ GitHub Actions trigger failed: {e}")
     
-    # Return structured result
+    # Step 3: All recovery attempts exhausted
     return {
-        "success": success,
-        "action": recovery_strategy['action'],
-        "message": message
+        "success": False,
+        "action": "Recovery attempts exhausted",
+        "message": f"Auto-recovery failed for {service_name}. Escalating to AI analysis."
     }
 
 
