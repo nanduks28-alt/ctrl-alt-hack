@@ -5,16 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SRE-Bot — AI Incident Response Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
+
+  <!-- Scan line effect -->
+  <div class="scan-line"></div>
 
   <!-- ===== AUTH OVERLAY ===== -->
   <!-- Shown fullscreen until the user is signed in. Hidden by JS on success. -->
   <div class="auth-overlay" id="auth-overlay">
     <div class="auth-card">
       <div class="auth-logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4f8ef7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-        SRE-Bot
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        <span class="glitch" data-text="SRE-Bot">SRE-Bot</span>
       </div>
       <p class="auth-tagline">AI-powered incident response for your live projects.</p>
 
@@ -52,10 +58,10 @@
   <!-- ===== SIDEBAR ===== -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f8ef7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
       </svg>
-      <span>SRE-Bot</span>
+      <span class="sidebar-logo-text">SRE-Bot</span>
     </div>
 
     <nav class="sidebar-nav">
@@ -125,28 +131,86 @@
       <!-- Stat Cards -->
       <div class="stat-cards">
         <div class="stat-card">
+          <div class="stat-card-icon green">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
           <div class="stat-label">Services Online</div>
           <div class="stat-value green" id="stat-services">12 / 12</div>
           <div class="stat-sub">All systems nominal</div>
+          <span class="stat-trend up">↑ 100%</span>
         </div>
         <div class="stat-card">
+          <div class="stat-card-icon red">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
           <div class="stat-label">Active Incidents</div>
           <div class="stat-value green" id="stat-incidents">0</div>
           <div class="stat-sub" id="stat-incidents-sub">No active incidents</div>
         </div>
         <div class="stat-card">
+          <div class="stat-card-icon blue">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2979ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
           <div class="stat-label">Avg Response Time</div>
           <div class="stat-value blue" id="stat-response">142ms</div>
           <div class="stat-sub">Last 5 minutes</div>
+          <span class="stat-trend up">↓ 12ms</span>
         </div>
         <div class="stat-card">
+          <div class="stat-card-icon yellow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffab00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+          </div>
           <div class="stat-label">Bob Credits Used</div>
           <div class="stat-value yellow" id="stat-credits">2 / 40</div>
           <div class="stat-sub">This billing cycle</div>
         </div>
       </div>
 
-      <!-- Dashboard Body: Health Grid + Activity Feed -->
+      <!-- Dashboard Body: Charts + Health Grid + Activity Feed -->
+      <div style="padding: 0 32px; margin-bottom: 18px; position: relative;">
+        <!-- 3D Globe background -->
+        <canvas id="globe-canvas"></canvas>
+
+        <!-- Incident Trend Chart -->
+        <div class="chart-section">
+          <div class="section-header">
+            <h2>Incident Trend — Last 7 Days</h2>
+            <span class="section-meta" style="color: #e53935; font-family: var(--mono);">LIVE</span>
+          </div>
+          <canvas id="incident-chart"></canvas>
+        </div>
+
+        <!-- Heatmap -->
+        <div class="heatmap-section">
+          <div class="section-header">
+            <h2>Incident Distribution — Hour of Day × Last 7 Days</h2>
+            <span class="section-meta" id="heatmap-range">Last 7 Days</span>
+          </div>
+
+          <!-- Hour labels row -->
+          <div class="heatmap-hour-labels" id="heatmap-hour-labels"></div>
+
+          <!-- Grid: 7 rows (days) × 24 cols (hours) -->
+          <div class="heatmap-time-wrap">
+            <div class="heatmap-day-labels" id="heatmap-day-labels"></div>
+            <div class="heatmap-grid" id="heatmap-grid"></div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; margin-top:10px; align-items:center;">
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span style="font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Less</span>
+              <div class="heatmap-cell" style="width:9px;height:9px;border-radius:2px;min-height:0;"></div>
+              <div class="heatmap-cell l1" style="width:9px;height:9px;border-radius:2px;min-height:0;"></div>
+              <div class="heatmap-cell l2" style="width:9px;height:9px;border-radius:2px;min-height:0;"></div>
+              <div class="heatmap-cell l3" style="width:9px;height:9px;border-radius:2px;min-height:0;"></div>
+              <div class="heatmap-cell l4" style="width:9px;height:9px;border-radius:2px;min-height:0;"></div>
+              <span style="font-size:9px; color:var(--text-muted);">More</span>
+            </div>
+            <span style="font-size:9px; color:var(--text-muted);">Each cell = 1 hour · <span id="heatmap-total" style="color:var(--red);">0</span> incidents total</span>
+          </div>
+        </div>
+      </div>
+
       <div class="dashboard-body">
         <!-- Service Health Grid -->
         <div class="health-section">
@@ -156,6 +220,14 @@
           </div>
           <div class="service-grid" id="service-grid">
             <!-- Populated by JS -->
+          </div>
+
+          <!-- Sparklines -->
+          <div style="margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <div class="section-header" style="margin-bottom:10px;">
+              <h2>Response Times</h2>
+            </div>
+            <div id="sparklines-container"></div>
           </div>
         </div>
 
@@ -167,6 +239,30 @@
           </div>
           <div class="activity-log" id="activity-log">
             <!-- Populated by JS -->
+          </div>
+
+          <!-- Mini donut chart -->
+          <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:14px;">
+            <div class="section-header" style="margin-bottom:10px;">
+              <h2>Status Breakdown</h2>
+            </div>
+            <div class="donut-wrap">
+              <canvas id="donut-chart" width="80" height="80"></canvas>
+              <div class="donut-legend">
+                <div class="donut-legend-item">
+                  <div class="donut-legend-dot" style="background:#00e676;box-shadow:0 0 6px #00e676;"></div>
+                  <span>Healthy</span>
+                </div>
+                <div class="donut-legend-item">
+                  <div class="donut-legend-dot" style="background:#e53935;box-shadow:0 0 6px #e53935;"></div>
+                  <span>Critical</span>
+                </div>
+                <div class="donut-legend-item">
+                  <div class="donut-legend-dot" style="background:#ffab00;"></div>
+                  <span>Degraded</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -700,5 +796,483 @@
   </main>
 
   <script type="module" src="app.js"></script>
+
+  <!-- ===== FUTURISTIC CHARTS & 3D ===== -->
+  <script>
+  (function() {
+
+    /* ════════════════════════════════════════════════════════
+       DATA HELPERS
+       All chart functions read from window.__dashboardData,
+       which app.js populates after fetching real incidents.
+       Falls back to empty arrays so charts render on load.
+    ════════════════════════════════════════════════════════ */
+
+    /**
+     * Build a 7-element array: incidents per day for the last 7 days.
+     * incidents: array of { started_at: ISO string }
+     */
+    function buildDailyTrend(incidents) {
+      const counts = new Array(7).fill(0);
+      const now = Date.now();
+      incidents.forEach(inc => {
+        const ts = new Date(inc.started_at).getTime();
+        const daysAgo = Math.floor((now - ts) / 86400000);
+        if (daysAgo >= 0 && daysAgo < 7) counts[6 - daysAgo]++;
+      });
+      return counts;
+    }
+
+    /**
+     * Build a 7×24 heatmap: rows = last 7 days (oldest→newest),
+     * cols = hour of day (0–23).
+     * Returns a 7×24 array of incident counts.
+     */
+    function buildHeatmap(incidents) {
+      // grid[dayIndex][hour] — dayIndex 0 = 6 days ago, 6 = today
+      const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
+      const now = Date.now();
+      incidents.forEach(inc => {
+        const ts = new Date(inc.started_at);
+        const daysAgo = Math.floor((now - ts.getTime()) / 86400000);
+        if (daysAgo < 0 || daysAgo >= 7) return;
+        const dayIdx = 6 - daysAgo;   // 0 = oldest, 6 = today
+        const hour   = ts.getHours(); // 0–23
+        grid[dayIdx][hour]++;
+      });
+      return grid;
+    }
+
+    /**
+     * Build donut data: { healthy, critical, degraded } counts from projects.
+     */
+    function buildDonutData() {
+      const data = window.__dashboardData || {};
+      return {
+        healthy:  data.healthyCount  ?? 0,
+        critical: data.criticalCount ?? 0,
+        degraded: data.degradedCount ?? 0,
+      };
+    }
+
+    /* ── Incident Trend Line Chart (REAL DATA) ── */
+    function drawIncidentChart() {
+      const canvas = document.getElementById('incident-chart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.offsetWidth || 800;
+      const H = 160;
+      canvas.width = W;
+      canvas.height = H;
+
+      // Real data: incidents per day for last 7 days
+      const incidents = (window.__dashboardData && window.__dashboardData.incidents) || [];
+      const data = buildDailyTrend(incidents);
+
+      // Secondary line: resolved incidents per day
+      const resolved = incidents.filter(i => i.status === 'resolved');
+      const data2 = buildDailyTrend(resolved);
+
+      const maxVal = Math.max(...data, 1);
+      const pad = { top: 24, right: 28, bottom: 32, left: 36 };
+      const w = W - pad.left - pad.right;
+      const h = H - pad.top - pad.bottom;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Horizontal grid lines + Y labels
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (h / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(W - pad.right, y);
+        ctx.stroke();
+        const val = Math.round(maxVal - (maxVal / 4) * i);
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.font = '9px JetBrains Mono, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(val, pad.left - 6, y + 3);
+      }
+
+      const getX = i => pad.left + (i / (data.length - 1)) * w;
+      const getY = v => pad.top + h - (v / maxVal) * h;
+
+      function drawArea(d, colorStop0, colorStop1) {
+        if (d.every(v => v === 0)) return;
+        ctx.beginPath();
+        ctx.moveTo(getX(0), getY(d[0]));
+        for (let i = 1; i < d.length; i++) {
+          const cpx = (getX(i - 1) + getX(i)) / 2;
+          ctx.bezierCurveTo(cpx, getY(d[i - 1]), cpx, getY(d[i]), getX(i), getY(d[i]));
+        }
+        ctx.lineTo(getX(d.length - 1), H - pad.bottom);
+        ctx.lineTo(getX(0), H - pad.bottom);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
+        grad.addColorStop(0, colorStop0);
+        grad.addColorStop(1, colorStop1);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+
+      function drawLine(d, color, lineWidth) {
+        if (d.every(v => v === 0)) return;
+        ctx.beginPath();
+        ctx.moveTo(getX(0), getY(d[0]));
+        for (let i = 1; i < d.length; i++) {
+          const cpx = (getX(i - 1) + getX(i)) / 2;
+          ctx.bezierCurveTo(cpx, getY(d[i - 1]), cpx, getY(d[i]), getX(i), getY(d[i]));
+        }
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      drawArea(data,  'rgba(229,57,53,0.18)',  'rgba(229,57,53,0)');
+      drawArea(data2, 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)');
+      drawLine(data,  '#e53935', 2.5);
+      drawLine(data2, 'rgba(255,255,255,0.35)', 1.5);
+
+      // Highlight last point with diamond tooltip
+      const lastVal = data[data.length - 1];
+      const lx = getX(data.length - 1);
+      const ly = getY(lastVal);
+
+      ctx.beginPath();
+      ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#e53935';
+      ctx.shadowColor = '#e53935';
+      ctx.shadowBlur = 14;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Diamond badge
+      ctx.save();
+      ctx.translate(lx, ly - 22);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#e53935';
+      ctx.fillRect(-9, -9, 18, 18);
+      ctx.restore();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(lastVal, lx, ly - 18);
+
+      // X axis day labels
+      const dayNames = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86400000);
+        dayNames.push(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]);
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.font = '9px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      dayNames.forEach((name, i) => {
+        ctx.fillText(name, getX(i), H - 8);
+      });
+
+      // Total label
+      const total = data.reduce((s, v) => s + v, 0);
+      ctx.fillStyle = 'rgba(229,57,53,0.7)';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${total} total`, pad.left + 4, pad.top - 6);
+    }
+
+    /* ── Heatmap (REAL DATA — 7 days × 24 hours) ── */
+    function drawHeatmap() {
+      const gridEl    = document.getElementById('heatmap-grid');
+      const dayLabels = document.getElementById('heatmap-day-labels');
+      const hourLabels= document.getElementById('heatmap-hour-labels');
+      const totalEl   = document.getElementById('heatmap-total');
+      const rangeEl   = document.getElementById('heatmap-range');
+      if (!gridEl) return;
+
+      const incidents = (window.__dashboardData && window.__dashboardData.incidents) || [];
+      const grid = buildHeatmap(incidents);   // 7×24 counts
+
+      // Global max for normalisation across all cells
+      const globalMax = Math.max(...grid.flat(), 1);
+      const totalCount = grid.flat().reduce((s, v) => s + v, 0);
+      if (totalEl) totalEl.textContent = totalCount;
+
+      // Update date range label
+      if (rangeEl) {
+        const from = new Date(Date.now() - 6 * 86400000);
+        const to   = new Date();
+        const fmt  = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        rangeEl.textContent = `${fmt(from)} – ${fmt(to)}`;
+      }
+
+      // ── Hour labels (every 3 hours) ──
+      if (hourLabels) {
+        hourLabels.innerHTML = '<div class="heatmap-hour-label"></div>'; // spacer for day-label col
+        for (let h = 0; h < 24; h++) {
+          const el = document.createElement('div');
+          el.className = 'heatmap-hour-label';
+          if (h % 3 === 0) {
+            el.textContent = h === 0 ? '12a' : h < 12 ? h+'a' : h === 12 ? '12p' : (h-12)+'p';
+          }
+          hourLabels.appendChild(el);
+        }
+      }
+
+      // ── Day labels (Su Mo Tu …) ──
+      if (dayLabels) {
+        dayLabels.innerHTML = '';
+        for (let d = 6; d >= 0; d--) {
+          const date = new Date(Date.now() - d * 86400000);
+          const el = document.createElement('div');
+          el.className = 'heatmap-day-label';
+          el.textContent = ['Su','Mo','Tu','We','Th','Fr','Sa'][date.getDay()];
+          el.title = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+          dayLabels.appendChild(el);
+        }
+      }
+
+      // ── Grid cells: row = day (0=oldest), col = hour ──
+      gridEl.innerHTML = '';
+      for (let row = 0; row < 7; row++) {
+        for (let col = 0; col < 24; col++) {
+          const count = grid[row][col];
+          const lvl   = count === 0 ? 0 : Math.max(1, Math.round((count / globalMax) * 4));
+
+          const date    = new Date(Date.now() - (6 - row) * 86400000);
+          const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const hourStr = col === 0 ? '12am' : col < 12 ? col+'am' : col === 12 ? '12pm' : (col-12)+'pm';
+
+          const cell = document.createElement('div');
+          cell.className = 'heatmap-cell' + (lvl > 0 ? ' l' + lvl : '');
+          cell.title = `${dateStr} · ${hourStr}  →  ${count} incident${count !== 1 ? 's' : ''}`;
+          gridEl.appendChild(cell);
+        }
+      }
+    }
+
+    /* ── Donut Chart (REAL DATA) ── */
+    function drawDonut() {
+      const canvas = document.getElementById('donut-chart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const cx = 40, cy = 40, r = 32, inner = 20;
+
+      const d = buildDonutData();
+      const total = d.healthy + d.critical + d.degraded || 1;
+
+      const slices = [
+        { val: d.healthy,  color: '#00e676', glow: '#00e676' },
+        { val: d.critical, color: '#e53935', glow: '#e53935' },
+        { val: d.degraded, color: '#ffab00', glow: '#ffab00' },
+      ];
+
+      ctx.clearRect(0, 0, 80, 80);
+      let angle = -Math.PI / 2;
+      slices.forEach(s => {
+        if (s.val === 0) return;
+        const sweep = (s.val / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + sweep);
+        ctx.closePath();
+        ctx.fillStyle = s.color;
+        ctx.shadowColor = s.glow;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        angle += sweep;
+      });
+      ctx.shadowBlur = 0;
+      // Inner hole
+      ctx.beginPath();
+      ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+      ctx.fillStyle = '#111';
+      ctx.fill();
+      // Center total
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = 'bold 11px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(total, cx, cy);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    /* ── Sparklines ── */
+    function drawSparklines() {
+      const container = document.getElementById('sparklines-container');
+      if (!container) return;
+      const services = [
+        { name: 'payment-api', val: '134ms', data: [120,130,125,140,134,128,135,134] },
+        { name: 'auth-service', val: '89ms',  data: [85,90,88,92,89,87,91,89] },
+        { name: 'user-db',      val: '45ms',  data: [40,48,44,46,45,43,47,45] },
+      ];
+      container.innerHTML = '';
+      services.forEach(svc => {
+        const row = document.createElement('div');
+        row.className = 'sparkline-row';
+        const canvas = document.createElement('canvas');
+        canvas.className = 'sparkline-canvas';
+        canvas.height = 28;
+        row.innerHTML = `<span class="sparkline-label">${svc.name}</span>`;
+        row.appendChild(canvas);
+        const valEl = document.createElement('span');
+        valEl.className = 'sparkline-val';
+        valEl.textContent = svc.val;
+        row.appendChild(valEl);
+        container.appendChild(row);
+
+        requestAnimationFrame(() => {
+          const W = canvas.offsetWidth || 120;
+          canvas.width = W;
+          const ctx = canvas.getContext('2d');
+          const d = svc.data;
+          const min = Math.min(...d) - 5, max = Math.max(...d) + 5;
+          const getX = i => (i / (d.length - 1)) * W;
+          const getY = v => 28 - ((v - min) / (max - min)) * 24 - 2;
+
+          ctx.beginPath();
+          ctx.moveTo(getX(0), getY(d[0]));
+          for (let i = 1; i < d.length; i++) {
+            const cpx = (getX(i-1) + getX(i)) / 2;
+            ctx.bezierCurveTo(cpx, getY(d[i-1]), cpx, getY(d[i]), getX(i), getY(d[i]));
+          }
+          ctx.strokeStyle = '#e53935';
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = '#e53935';
+          ctx.shadowBlur = 4;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Fill
+          ctx.lineTo(getX(d.length-1), 28);
+          ctx.lineTo(0, 28);
+          ctx.closePath();
+          const grad = ctx.createLinearGradient(0, 0, 0, 28);
+          grad.addColorStop(0, 'rgba(229,57,53,0.2)');
+          grad.addColorStop(1, 'rgba(229,57,53,0)');
+          ctx.fillStyle = grad;
+          ctx.fill();
+        });
+      });
+    }
+
+    /* ── 3D Rotating Globe ── */
+    function drawGlobe() {
+      const canvas = document.getElementById('globe-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = 320, H = 320;
+      canvas.width = W; canvas.height = H;
+      const cx = W/2, cy = H/2, R = 120;
+      let angle = 0;
+
+      // Generate random points on sphere
+      const points = [];
+      for (let i = 0; i < 200; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        points.push({ theta, phi });
+      }
+
+      // Lat/lon grid lines
+      const latLines = [], lonLines = [];
+      for (let lat = -80; lat <= 80; lat += 20) {
+        const pts = [];
+        for (let lon = 0; lon <= 360; lon += 5) {
+          pts.push({ theta: (lon * Math.PI) / 180, phi: ((90 - lat) * Math.PI) / 180 });
+        }
+        latLines.push(pts);
+      }
+      for (let lon = 0; lon < 360; lon += 30) {
+        const pts = [];
+        for (let lat = -90; lat <= 90; lat += 5) {
+          pts.push({ theta: (lon * Math.PI) / 180, phi: ((90 - lat) * Math.PI) / 180 });
+        }
+        lonLines.push(pts);
+      }
+
+      function project(theta, phi, rot) {
+        const x = R * Math.sin(phi) * Math.cos(theta + rot);
+        const y = R * Math.cos(phi);
+        const z = R * Math.sin(phi) * Math.sin(theta + rot);
+        return { x: cx + x, y: cy - y, z };
+      }
+
+      function drawFrame() {
+        ctx.clearRect(0, 0, W, H);
+        angle += 0.003;
+
+        // Draw grid lines
+        [...latLines, ...lonLines].forEach(line => {
+          ctx.beginPath();
+          let first = true;
+          line.forEach(p => {
+            const { x, y, z } = project(p.theta, p.phi, angle);
+            if (z > 0) {
+              if (first) { ctx.moveTo(x, y); first = false; }
+              else ctx.lineTo(x, y);
+            } else { first = true; }
+          });
+          ctx.strokeStyle = 'rgba(229,57,53,0.3)';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        });
+
+        // Draw points
+        points.forEach(p => {
+          const { x, y, z } = project(p.theta, p.phi, angle);
+          if (z > 0) {
+            ctx.beginPath();
+            ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = z > 60 ? '#e53935' : 'rgba(229,57,53,0.4)';
+            ctx.fill();
+          }
+        });
+
+        requestAnimationFrame(drawFrame);
+      }
+      drawFrame();
+    }
+
+    /* ── Init all on load ── */
+    function init() {
+      drawIncidentChart();
+      drawHeatmap();
+      drawDonut();
+      drawSparklines();
+      drawGlobe();
+      window.addEventListener('resize', () => {
+        drawIncidentChart();
+        drawSparklines();
+      });
+    }
+
+    /**
+     * Called by app.js after fetching real data.
+     * incidents: array of incident rows from Supabase
+     * projectStats: { healthyCount, criticalCount, degradedCount }
+     */
+    window.refreshDashboardCharts = function(incidents, projectStats) {
+      window.__dashboardData = {
+        incidents: incidents || [],
+        healthyCount:  (projectStats && projectStats.healthyCount)  || 0,
+        criticalCount: (projectStats && projectStats.criticalCount) || 0,
+        degradedCount: (projectStats && projectStats.degradedCount) || 0,
+      };
+      drawIncidentChart();
+      drawHeatmap();
+      drawDonut();
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      setTimeout(init, 100);
+    }
+  })();
+  </script>
 </body>
 </html>

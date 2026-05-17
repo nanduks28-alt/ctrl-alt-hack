@@ -14,7 +14,7 @@ import {
   saveIncident,
   updateIncident,
   savePostmortem,
-  fetchIncidents,
+  fetchIncidents, 
   fetchPostmortems,
   subscribeToIncidents,
   sendOtp,
@@ -597,6 +597,9 @@ function initGeneratePostmortem() {
 
     addLogEntry(`Postmortem generated for ${inc.id}. Incident resolved.`, 'ok');
 
+    // Refresh dashboard charts with updated incident data
+    refreshCharts();
+
     // Navigate to postmortem page
     navigateTo('postmortem');
   });
@@ -991,6 +994,9 @@ async function onSignedIn(user) {
 
   // Load this user's projects
   await loadProjects();
+
+  // Fetch all incidents for this account and push to dashboard charts
+  await refreshCharts();
 }
 
 /* ─────────────────────────────────────────────
@@ -999,14 +1005,14 @@ async function onSignedIn(user) {
    Each project has a GitHub repo URL + live demo URL.
 ───────────────────────────────────────────── */
 function initProjects() {
-  const addBtn      = document.getElementById('add-project-btn');
-  const modal       = document.getElementById('project-modal');
-  const closeBtn    = document.getElementById('project-modal-close');
-  const cancelBtn   = document.getElementById('project-modal-cancel');
-  const saveBtn     = document.getElementById('project-save-btn');
-  const repoInput   = document.getElementById('proj-repo');
-  const demoInput   = document.getElementById('proj-demo');
-  const modalError  = document.getElementById('project-modal-error');
+  const addBtn     = document.getElementById('add-project-btn');
+  const modal      = document.getElementById('project-modal');
+  const closeBtn   = document.getElementById('project-modal-close');
+  const cancelBtn  = document.getElementById('project-modal-cancel');
+  const saveBtn    = document.getElementById('project-save-btn');
+  const repoInput  = document.getElementById('proj-repo');
+  const demoInput  = document.getElementById('proj-demo');
+  const modalError = document.getElementById('project-modal-error');
 
   function openModal()  { modal.style.display = 'flex'; repoInput.focus(); }
   function closeModal() {
@@ -1014,6 +1020,7 @@ function initProjects() {
     repoInput.value = '';
     demoInput.value = '';
     modalError.style.display = 'none';
+    modal.querySelectorAll('.confirm-anyway-btn, .github-otp-wrap').forEach(el => el.remove());
   }
 
   addBtn.addEventListener('click', openModal);
@@ -1028,72 +1035,55 @@ function initProjects() {
 
     if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
       modalError.textContent = 'Please enter a valid GitHub repository URL (https://github.com/...).';
-      modalError.style.display = 'block';
-      return;
+      modalError.style.display = 'block'; return;
     }
     if (!demoUrl) {
       modalError.textContent = 'Please enter the live demo URL.';
-      modalError.style.display = 'block';
-      return;
+      modalError.style.display = 'block'; return;
     }
     if (!state.currentUser) {
       modalError.textContent = 'You must be signed in to add a project.';
-      modalError.style.display = 'block';
-      return;
+      modalError.style.display = 'block'; return;
     }
 
     const parts = repoUrl.replace('https://github.com/', '').split('/');
+    const owner = parts[0];
+    const repo  = parts[1];
     const name  = parts.slice(0, 2).join('/');
+
+    if (!owner || !repo) {
+      modalError.textContent = 'Invalid GitHub URL — must be https://github.com/owner/repo';
+      modalError.style.display = 'block'; return;
+    }
 
     saveBtn.textContent = 'Checking GitHub...';
     saveBtn.disabled = true;
-
-    // ── GitHub ownership verification ────────────────────────
     const check = await verifyGithubOwnership(repoUrl, state.currentUser.email);
-
-    if (!check.verified) {
-      if (check.githubEmail) {
-        // Emails don't match — send OTP to the GitHub email for verification
-        modalError.innerHTML =
-          `Your sign-in email (<strong>${state.currentUser.email}</strong>) doesn't match ` +
-          `the GitHub account email (<strong>${check.githubEmail}</strong>).<br><br>` +
-          `A verification code has been sent to <strong>${check.githubEmail}</strong>. ` +
-          `Enter it below to confirm ownership.`;
-        modalError.style.display = 'block';
-
-        // Send OTP to the GitHub email
-        await sendOtp(check.githubEmail);
-
-        // Swap save button to a verify flow
-        saveBtn.textContent = 'Save Project';
-        saveBtn.disabled = false;
-        showGithubOtpPrompt(modal, check.githubEmail, { name, repoUrl, demoUrl }, closeModal);
-        return;
-
-      } else if (check.error) {
-        // GitHub API failed — warn but allow save (best-effort)
-        modalError.textContent =
-          `Could not verify GitHub ownership (${check.error}). Proceeding anyway.`;
-        modalError.style.display = 'block';
-
-      } else {
-        // GitHub email is private — ask user to confirm they own the repo
-        modalError.innerHTML =
-          `The GitHub account <strong>${check.login}</strong> has a private email, ` +
-          `so we can't verify ownership automatically.<br><br>` +
-          `By saving, you confirm this is your repository.`;
-        modalError.style.display = 'block';
-      }
-    }
-
-    // Verified (or best-effort) — proceed with save
-    await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
-
     saveBtn.textContent = 'Save Project';
     saveBtn.disabled = false;
+
+    // Emails match — save directly
+    if (check.verified) {
+      await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
+      return;
+    }
+
+    // Emails don't match but we found a real GitHub email — warn but allow
+    if (check.githubEmail) {
+      modalError.innerHTML =
+        `⚠️ Your sign-in email (<strong>${state.currentUser.email}</strong>) doesn't match ` +
+        `the GitHub commit email (<strong>${check.githubEmail}</strong>). ` +
+        `Make sure this is your repo.`;
+      modalError.style.display = 'block';
+      await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
+      return;
+    }
+
+    // GitHub API error or private email — just save, warn in log
+    addLogEntry(`GitHub ownership could not be verified for ${name} — saved anyway.`, 'warn');
+    await doSaveProject({ name, repoUrl, demoUrl }, closeModal);
   });
 }
-
 /* ─────────────────────────────────────────────
    doSaveProject({ name, repoUrl, demoUrl }, closeModal)
    Final step — actually inserts the project row.
@@ -1219,6 +1209,27 @@ async function loadProjects() {
   if (rows.length > 0) {
     addLogEntry(`Loaded ${rows.length} project(s) from Supabase.`, 'info');
   }
+}
+
+/* ─────────────────────────────────────────────
+   refreshCharts()
+   Fetches all incidents for the account and pushes
+   real data to the dashboard charts via the global
+   window.refreshDashboardCharts bridge.
+───────────────────────────────────────────── */
+async function refreshCharts() {
+  if (typeof window.refreshDashboardCharts !== 'function') return;
+
+  const incidents = await fetchIncidents();
+
+  // Compute project health counts from current state
+  const healthyCount  = state.projects.filter(p => !p._status || p._status === 'healthy').length;
+  const criticalCount = state.projects.filter(p => p._status === 'critical').length;
+  const degradedCount = state.projects.filter(p => p._status === 'degraded').length;
+
+  window.refreshDashboardCharts(incidents, { healthyCount, criticalCount, degradedCount });
+
+  addLogEntry(`Dashboard charts updated — ${incidents.length} incident(s) loaded.`, 'info');
 }
 
 function renderProjects() {
